@@ -1,0 +1,45 @@
+[Unit]
+Description=Android Bridge Bot — SMS to Telegram forwarder
+Documentation=https://github.com/yourname/abb
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=abb
+Group=abb
+WorkingDirectory=/opt/abb
+
+# Start the ADB server before the service (it stays in the background).
+# Adjust the path to adb if it lives elsewhere on your system.
+ExecStartPre=/usr/bin/adb start-server
+
+# Pass config path as the first argument; edit to match your layout.
+ExecStart=/opt/abb/abb /opt/abb/config.yaml
+
+Restart=on-failure
+RestartSec=5s
+
+# Logs go to journald; use `journalctl -u abb -f` to follow.
+# Set log.file in config.yaml to write to a plain file instead.
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=abb
+
+# Graceful shutdown: send SIGTERM, wait up to 10 s, then SIGKILL.
+TimeoutStopSec=10s
+KillMode=mixed
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/opt/abb
+PrivateTmp=true
+
+# Resource limits
+MemoryMax=128M
+LimitNOFILE=4096
+
+[Install]
+WantedBy=multi-user.target

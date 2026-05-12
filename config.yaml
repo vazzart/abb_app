@@ -1,0 +1,45 @@
+adb:
+  server_host: "localhost"   # ADB server host (default: localhost)
+  server_port: 5037          # ADB server port (default: 5037)
+  poll_interval: 30s
+  watch_interval: 5s
+  device_serial: ""          # пусто = первое найденное устройство
+
+db:
+  path: "./abb.db"
+
+telegram:
+  token: "BOT_TOKEN"
+  chat_id: 0
+  proxy:
+    enabled: false
+    address: "213.171.27.132:443"
+    username: "userproxy"
+    password: "GfhjkmGHJRCBvazz"
+
+email:
+  enabled: false
+  host: "smtp.gmail.com"
+  port: 587
+  username: ""
+  password: ""
+  from: ""
+  to: ""
+
+metrics:
+  enabled: false
+  addr: ":9090"   # GET /metrics → Prometheus scrape endpoint
+
+log:
+  file: ""            # empty = stderr (journald captures it under systemd)
+  max_size_mb: 100    # rotate when file exceeds this size
+  max_age_days: 7     # delete rotated files older than this
+  compress: true      # gzip rotated files
+
+dispatcher:
+  max_attempts: 5
+  retry_base_interval: 1m   # base backoff: 1m, 2m, 4m, 8m, 16m ...
+  dispatch_interval: 10s    # how often dispatcher sweeps pending outbox
+
+channels:
+  - telegram
