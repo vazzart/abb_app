@@ -13,6 +13,8 @@ import (
 	"go.uber.org/zap/zapcore"
 	"gopkg.in/natefinch/lumberjack.v2"
 
+	"net/http"
+
 	"abb/config"
 	"abb/internal/adb"
 	"abb/internal/db"
@@ -162,6 +164,14 @@ func buildSenders(cfg *config.Config, log *zap.Logger) map[string]sender.Sender 
 	if cfg.Email.Enabled {
 		senders["email"] = sender.NewEmailSender(cfg.Email, nil)
 		log.Info("email sender ready", zap.String("to", cfg.Email.To))
+	}
+
+	if cfg.Ntfy.Enabled {
+		senders["ntfy"] = sender.NewNtfySender(cfg.Ntfy, &http.Client{Timeout: 10 * time.Second})
+		log.Info("ntfy sender ready",
+			zap.String("server", cfg.Ntfy.ServerURL),
+			zap.String("topic", cfg.Ntfy.Topic),
+		)
 	}
 
 	return senders

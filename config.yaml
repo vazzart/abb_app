@@ -26,6 +26,13 @@ email:
   from: ""
   to: ""
 
+ntfy:
+  enabled: false
+  server_url: "https://ntfy.example.com"  # URL вашего Ntfy сервера
+  topic: "sms"                             # имя топика (придумайте уникальное)
+  token: ""                                # Bearer-токен, если включена авторизация
+  priority: "default"                      # low | default | high | urgent | max
+
 metrics:
   enabled: false
   addr: ":9090"   # GET /metrics → Prometheus scrape endpoint

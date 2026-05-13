@@ -1,6 +1,6 @@
 # abb — Android Bridge Bot
 
-Reads SMS from an Android phone connected via USB and forwards them to Telegram (and optionally Email). All messages are buffered in a local SQLite database with automatic retry on failure.
+Reads SMS from an Android phone connected via USB and forwards them to Telegram, Ntfy, and/or Email. All messages are buffered in a local SQLite database with automatic retry on failure.
 
 ---
 
@@ -8,7 +8,7 @@ Reads SMS from an Android phone connected via USB and forwards them to Telegram 
 
 - Reads inbox SMS via ADB (`content://sms/inbox`) — no root required
 - Saves every message to SQLite before sending (no data loss on crash)
-- Delivers to Telegram; optional Email as a second channel
+- Delivers to **Telegram**, **Ntfy**, and/or **Email** (any combination)
 - Optional SOCKS5 proxy for Telegram
 - Exponential backoff retry (configurable attempts and base interval)
 - Wraps OTP digit sequences (3+ digits) in backticks for better readability in Telegram
@@ -97,6 +97,13 @@ email:
   from: "bot@example.com"
   to: "you@example.com"
 
+ntfy:
+  enabled: false
+  server_url: "https://ntfy.example.com"  # URL вашего сервера
+  topic: "sms"                             # уникальное имя топика
+  token: ""                                # Bearer-токен (если включена auth)
+  priority: "default"                      # low | default | high | urgent | max
+
 dispatcher:
   max_attempts: 5           # give up after this many failures
   retry_base_interval: 1m  # backoff: 1m, 2m, 4m, 8m, 16m …
@@ -114,6 +121,7 @@ log:
 
 channels:
   - telegram
+  # - ntfy
   # - email
 ```
 
@@ -199,6 +207,106 @@ scrape_configs:
 
 ---
 
+## Ntfy setup (self-hosted, Docker + VPS)
+
+[Ntfy](https://ntfy.sh) is a simple pub/sub notification service. `abb` POSTs each SMS to your Ntfy server; the Ntfy app on your phone subscribes to the topic and shows a push notification.
+
+### 1. Deploy Ntfy on your VPS
+
+```bash
+# Create a directory for data and config
+mkdir -p /opt/ntfy
+
+# docker-compose.yml
+cat > /opt/ntfy/docker-compose.yml <<'EOF'
+services:
+  ntfy:
+    image: binwiederhier/ntfy
+    container_name: ntfy
+    command: serve
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - /opt/ntfy/data:/var/lib/ntfy
+      - /opt/ntfy/server.yml:/etc/ntfy/server.yml:ro
+    environment:
+      TZ: Europe/Moscow
+EOF
+
+# Minimal config
+cat > /opt/ntfy/server.yml <<'EOF'
+base-url: "https://ntfy.example.com"   # your domain / VPS IP
+listen-http: ":80"
+cache-file: "/var/lib/ntfy/cache.db"
+auth-file: "/var/lib/ntfy/users.db"
+auth-default-access: "deny-all"         # require authentication
+EOF
+
+docker compose -f /opt/ntfy/docker-compose.yml up -d
+```
+
+> If you have a domain, put nginx/Caddy in front with TLS. For a quick start with a bare IP, use `http://` and skip TLS.
+
+### 2. Create a user and topic access
+
+```bash
+# Create a user for abb (publisher)
+docker exec -it ntfy ntfy user add --role=user abb_publisher
+
+# Grant publish access to the topic
+docker exec -it ntfy ntfy access abb_publisher sms write
+
+# Create a read-only user for the phone app (optional but recommended)
+docker exec -it ntfy ntfy user add --role=user phone_reader
+docker exec -it ntfy ntfy access phone_reader sms read
+```
+
+Generate a token (instead of password in Bearer header):
+
+```bash
+docker exec -it ntfy ntfy token add abb_publisher
+# → tk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+### 3. Configure abb
+
+```yaml
+ntfy:
+  enabled: true
+  server_url: "https://ntfy.example.com"
+  topic: "sms"           # must match the topic you granted access to
+  token: "tk_xxxxx..."   # token from step 2
+  priority: "high"       # SMS are important — use high or urgent
+
+channels:
+  - ntfy
+  - telegram             # you can send to multiple channels simultaneously
+```
+
+### 4. Install Ntfy app on your phone
+
+- [Android (F-Droid / Play Store)](https://ntfy.sh/#subscribe)
+- iOS App Store: search **ntfy**
+
+Add a subscription:
+1. Open the app → **+** → **Custom server**
+2. Server URL: `https://ntfy.example.com`
+3. Topic: `sms`
+4. Enter username `phone_reader` and password (or use Access Token)
+
+### Ntfy priorities
+
+| Value | When to use |
+|---|---|
+| `low` | Background info, not time-sensitive |
+| `default` | Normal notifications |
+| `high` | SMS — recommended |
+| `urgent` | OTP codes, banking alerts |
+| `max` | Breaks through Do Not Disturb on Android |
+
+---
+
 ## Adding a new delivery channel
 
 1. Implement `sender.Sender`:
@@ -228,7 +336,7 @@ abb_app/
 │   ├── dispatcher/          # fan-out delivery + exponential backoff retry worker
 │   ├── metrics/             # Prometheus counters + HTTP server
 │   ├── model/               # shared types: Message, OutboxItem, RetryItem
-│   └── sender/              # Sender interface, TelegramSender, EmailSender
+│   └── sender/              # Sender interface, TelegramSender, NtfySender, EmailSender
 ├── config/config.go         # viper config loader + all config structs
 ├── deploy/abb.service       # systemd unit file
 ├── config.yaml              # runtime configuration
@@ -248,3 +356,6 @@ abb_app/
 | SMS read but not sent | `channels` list empty or token is placeholder | Check `config.yaml`, set a real token |
 | `permission denied: content://sms` | USB debugging not enabled or prompt not approved | Re-approve RSA fingerprint on the phone |
 | High memory / large log file | Log rotation not configured | Set `log.file` and tune `max_size_mb` / `max_age_days` |
+| `ntfy: server returned 401` | Wrong token or user has no publish access | Re-check token; run `ntfy access abb_publisher sms write` |
+| `ntfy: server returned 403` | Topic access denied | Check `auth-default-access` in `server.yml` and user permissions |
+| No Ntfy push on phone | Wrong topic name or server URL | Verify topic matches in both `config.yaml` and the Ntfy app subscription |

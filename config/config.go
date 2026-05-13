@@ -11,6 +11,7 @@ type Config struct {
 	DB         DBConfig
 	Telegram   TelegramConfig
 	Email      EmailConfig
+	Ntfy       NtfyConfig
 	Dispatcher DispatcherConfig
 	Metrics    MetricsConfig
 	Log        LogConfig
@@ -52,6 +53,14 @@ type EmailConfig struct {
 	To       string
 }
 
+type NtfyConfig struct {
+	Enabled   bool
+	ServerURL string // e.g. "https://ntfy.example.com"
+	Topic     string
+	Token     string // optional Bearer token
+	Priority  string // "default", "low", "high", "urgent", "max"
+}
+
 type MetricsConfig struct {
 	Enabled bool
 	Addr    string
@@ -84,6 +93,8 @@ func Load(path string) (*Config, error) {
 	v.SetDefault("dispatcher.dispatch_interval", "10s")
 	v.SetDefault("email.enabled", false)
 	v.SetDefault("email.port", 587)
+	v.SetDefault("ntfy.enabled", false)
+	v.SetDefault("ntfy.priority", "default")
 	v.SetDefault("metrics.enabled", false)
 	v.SetDefault("metrics.addr", ":9090")
 	v.SetDefault("log.max_size_mb", 100)
@@ -123,6 +134,13 @@ func Load(path string) (*Config, error) {
 			Password: v.GetString("email.password"),
 			From:     v.GetString("email.from"),
 			To:       v.GetString("email.to"),
+		},
+		Ntfy: NtfyConfig{
+			Enabled:   v.GetBool("ntfy.enabled"),
+			ServerURL: v.GetString("ntfy.server_url"),
+			Topic:     v.GetString("ntfy.topic"),
+			Token:     v.GetString("ntfy.token"),
+			Priority:  v.GetString("ntfy.priority"),
 		},
 		Dispatcher: DispatcherConfig{
 			MaxAttempts:       v.GetInt("dispatcher.max_attempts"),
