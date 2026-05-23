@@ -1,0 +1,73 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: abb
+  namespace: default
+  labels:
+    app: abb
+spec:
+  replicas: 1
+  # Recreate (не RollingUpdate): SQLite не поддерживает двух одновременных писателей.
+  # Старый Pod должен полностью остановиться до запуска нового.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: abb
+  template:
+    metadata:
+      labels:
+        app: abb
+    spec:
+      # Оба контейнера разделяют сетевой namespace пода →
+      # abb видит ADB-сервер на localhost:5037.
+      containers:
+
+        # ── ADB sidecar ──────────────────────────────────────────────────────
+        - name: adb-server
+          image: your-registry/abb-adb:latest   # <-- замените на свой registry
+          imagePullPolicy: Always
+          env:
+            - name: PHONE_HOST
+              value: "192.168.1.42"              # <-- IP телефона в сети
+            - name: PHONE_PORT
+              value: "5555"
+            - name: RECONNECT_INTERVAL
+              value: "15"                        # секунд между проверками
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "32Mi"
+            limits:
+              cpu: "100m"
+              memory: "64Mi"
+
+        # ── abb app ──────────────────────────────────────────────────────────
+        - name: abb
+          image: your-registry/abb:latest        # <-- замените на свой registry
+          imagePullPolicy: Always
+          args: ["config.yaml"]
+          volumeMounts:
+            - name: config
+              mountPath: /app/config.yaml
+              subPath: config.yaml
+              readOnly: true
+            - name: data
+              mountPath: /data
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"
+
+      volumes:
+        - name: config
+          secret:
+            secretName: abb-config
+        - name: data
+          persistentVolumeClaim:
+            claimName: abb-data
+
+      restartPolicy: Always

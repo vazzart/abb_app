@@ -100,17 +100,30 @@ func main() {
 		case event := <-watcher.Events:
 			switch event.State {
 			case adb.Connected:
-				maxID, err := database.GetMaxAndroidID(ctx)
-				if err != nil {
-					log.Warn("could not read max android_id, starting from 0", zap.Error(err))
+				devices, devErr := adbClient.DeviceList()
+				var startID int64
+				if devErr != nil {
+					log.Warn("could not list devices for startup cursor", zap.Error(devErr))
+				} else {
+					for i := range devices {
+						if devices[i].Serial() == event.Serial {
+							id, err := adb.FetchMaxAndroidID(&devices[i])
+							if err != nil {
+								log.Warn("could not fetch device max android_id, starting from 0", zap.Error(err))
+							} else {
+								startID = id
+							}
+							break
+						}
+					}
 				}
 				log.Info("starting SMS poller",
 					zap.String("serial", event.Serial),
-					zap.Int64("last_android_id", maxID),
+					zap.Int64("last_android_id", startID),
 				)
 				var pollerCtx context.Context
 				pollerCtx, pollerCancel = context.WithCancel(ctx)
-				poller := adb.NewPoller(adbClient, event.Serial, cfg.ADB.PollInterval, maxID, log)
+				poller := adb.NewPoller(adbClient, event.Serial, cfg.ADB.PollInterval, startID, log)
 				go poller.Run(pollerCtx)
 				go processMessages(pollerCtx, poller, database, cfg.Channels, disp, log)
 

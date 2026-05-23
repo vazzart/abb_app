@@ -35,8 +35,29 @@ type Poller struct {
 	Messages chan model.Message
 }
 
+// FetchMaxAndroidID queries the device's SMS inbox and returns the current
+// maximum android_id. Used at startup to skip all SMS already on the device.
+func FetchMaxAndroidID(device *gadb.Device) (int64, error) {
+	out, err := device.RunShellCommand(smsShellCmd)
+	if err != nil {
+		return 0, fmt.Errorf("adb shell: %w", err)
+	}
+	msgs, err := ParseSMSOutput(out)
+	if err != nil {
+		return 0, fmt.Errorf("parse sms: %w", err)
+	}
+	var maxID int64
+	for _, msg := range msgs {
+		id, _ := strconv.ParseInt(msg.AndroidID, 10, 64)
+		if id > maxID {
+			maxID = id
+		}
+	}
+	return maxID, nil
+}
+
 // NewPoller creates a new SMS poller. initialLastID seeds the deduplication
-// cursor from the DB on restart so already-saved SMS are skipped.
+// cursor so already-existing SMS are skipped.
 func NewPoller(client gadb.Client, serial string, interval time.Duration, initialLastID int64, log *zap.Logger) *Poller {
 	return &Poller{
 		client:   client,

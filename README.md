@@ -307,6 +307,129 @@ Add a subscription:
 
 ---
 
+## Docker и Kubernetes (ADB по WiFi)
+
+### Структура образов
+
+| Образ | Файл | Назначение |
+|---|---|---|
+| `abb` | `Dockerfile` | само приложение (Go, pure-CGO-free) |
+| `abb-adb` | `deploy/adb/Dockerfile` | ADB-сервер + авто-переподключение к телефону |
+
+В Kubernetes оба контейнера запускаются в одном **Pod** и разделяют сетевой namespace → `abb` видит ADB-сервер на `localhost:5037`.
+
+---
+
+### 1. Подготовка телефона (один раз)
+
+**Android 11+**
+```bash
+# На телефоне: Настройки → Для разработчиков → Беспроводная отладка → Сопряжение по коду
+adb pair <ip>:<pair-port>   # ввести код с экрана
+adb connect <ip>:5555
+adb devices                  # должен показать <ip>:5555  device
+```
+
+**Android ≤ 10** (USB нужен один раз для переключения в TCP-режим)
+```bash
+adb tcpip 5555
+# отключить USB
+adb connect <ip телефона>:5555
+```
+
+После этого USB больше не нужен. Телефон должен быть в той же сети, что и кластер.
+
+---
+
+### 2. Сборка образов
+
+```bash
+# из корня репозитория
+
+# образ приложения
+docker build -t your-registry/abb:latest .
+
+# образ ADB-сайдкара
+docker build -t your-registry/abb-adb:latest deploy/adb/
+
+# запушить в registry
+docker push your-registry/abb:latest
+docker push your-registry/abb-adb:latest
+```
+
+---
+
+### 3. Настройка конфига
+
+Откройте `deploy/k8s/secret.yaml` и впишите реальные значения:
+
+```yaml
+stringData:
+  config.yaml: |
+    telegram:
+      token: "1234567890:AAH..."   # токен от @BotFather
+      chat_id: 123456789           # ваш числовой chat_id
+```
+
+И IP телефона в `deploy/k8s/deployment.yaml`:
+```yaml
+env:
+  - name: PHONE_HOST
+    value: "192.168.1.42"          # статический IP телефона
+```
+
+> **Совет:** назначьте телефону статический IP в роутере (DHCP-резервация по MAC), иначе IP может меняться.
+
+---
+
+### 4. Деплой в Kubernetes
+
+```bash
+# PVC для базы данных
+kubectl apply -f deploy/k8s/pvc.yaml
+
+# Secret с config.yaml (содержит токен — не коммитьте в git!)
+kubectl apply -f deploy/k8s/secret.yaml
+
+# Deployment
+kubectl apply -f deploy/k8s/deployment.yaml
+
+# Проверка
+kubectl get pods -l app=abb
+kubectl logs -l app=abb -c adb-server --follow   # лог ADB-сайдкара
+kubectl logs -l app=abb -c abb --follow           # лог приложения
+```
+
+Ожидаемый вывод в логах `adb-server`:
+```
+[2026-05-23T10:00:01Z] Starting ADB server...
+[2026-05-23T10:00:02Z] Connecting to 192.168.1.42:5555...
+connected to 192.168.1.42:5555
+```
+
+---
+
+### 5. Обновление приложения
+
+```bash
+docker build -t your-registry/abb:v2 . && docker push your-registry/abb:v2
+kubectl set image deployment/abb abb=your-registry/abb:v2
+# Deployment использует strategy: Recreate — старый Pod остановится до запуска нового
+```
+
+---
+
+### Важные ограничения
+
+| Ограничение | Причина |
+|---|---|
+| `replicas: 1` | SQLite не поддерживает параллельную запись из нескольких процессов |
+| `strategy: Recreate` | Исключает ситуацию двух одновременно работающих Pod во время обновления |
+| Телефон в одной сети с кластером | ADB-сервер сам подключается к телефону (не наоборот) |
+| Статический IP телефона | Если IP меняется, сайдкар не найдёт телефон до перезапуска Pod |
+
+---
+
 ## Adding a new delivery channel
 
 1. Implement `sender.Sender`:

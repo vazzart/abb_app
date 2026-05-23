@@ -1,3 +1,5 @@
 .claude
 *.db
 .idea
+/abb.exe
+deploy/k8s/secret.yaml
