@@ -22,6 +22,7 @@ import (
 	"abb/internal/metrics"
 	"abb/internal/model"
 	"abb/internal/sender"
+	"abb/internal/translator"
 )
 
 func main() {
@@ -57,6 +58,7 @@ func main() {
 		log.Fatal("connect to ADB server", zap.Error(err))
 	}
 
+	tr := buildTranslator(cfg, log)
 	senders := buildSenders(cfg, log)
 
 	disp := dispatcher.New(database, senders, cfg.Dispatcher.DispatchInterval, 100*time.Millisecond, log)
@@ -125,7 +127,7 @@ func main() {
 				pollerCtx, pollerCancel = context.WithCancel(ctx)
 				poller := adb.NewPoller(adbClient, event.Serial, cfg.ADB.PollInterval, startID, log)
 				go poller.Run(pollerCtx)
-				go processMessages(pollerCtx, poller, database, cfg.Channels, disp, log)
+				go processMessages(pollerCtx, poller, database, cfg.Channels, disp, tr, log)
 
 			case adb.Disconnected:
 				log.Warn("device disconnected, stopping poller")
@@ -196,6 +198,7 @@ func processMessages(
 	database *db.DB,
 	channels []string,
 	disp *dispatcher.Dispatcher,
+	tr *translator.Yandex,
 	log *zap.Logger,
 ) {
 	for {
@@ -203,7 +206,7 @@ func processMessages(
 		case <-ctx.Done():
 			return
 		case msg := <-poller.Messages:
-			saveAndEnqueue(ctx, msg, database, channels, disp, log)
+			saveAndEnqueue(ctx, msg, database, channels, disp, tr, log)
 		}
 	}
 }
@@ -214,6 +217,7 @@ func saveAndEnqueue(
 	database *db.DB,
 	channels []string,
 	disp *dispatcher.Dispatcher,
+	tr *translator.Yandex,
 	log *zap.Logger,
 ) {
 	id, isNew, err := database.SaveMessage(ctx, msg)
@@ -227,6 +231,23 @@ func saveAndEnqueue(
 
 	metrics.SMSReceived.Inc()
 
+	if tr != nil {
+		translated, lang, err := tr.Translate(ctx, msg.Body)
+		if err != nil {
+			log.Warn("translate failed", zap.Error(err))
+		} else if lang != tr.TargetLang() {
+			bodyEdited := msg.Body + "\n\n(" + translated + ")"
+			if err := database.UpdateBodyEdited(ctx, id, bodyEdited); err != nil {
+				log.Error("update body_edited", zap.Error(err))
+			} else {
+				log.Info("translated message",
+					zap.String("from", lang),
+					zap.String("to", tr.TargetLang()),
+				)
+			}
+		}
+	}
+
 	for _, ch := range channels {
 		if err := database.CreateOutboxEntry(ctx, id, ch); err != nil {
 			log.Error("create outbox entry", zap.Error(err), zap.String("channel", ch))
@@ -239,4 +260,16 @@ func saveAndEnqueue(
 		msg.Address,
 		msg.Body,
 	)
+}
+
+func buildTranslator(cfg *config.Config, log *zap.Logger) *translator.Yandex {
+	if !cfg.Translate.Enabled {
+		return nil
+	}
+	if cfg.Translate.APIKey == "" || cfg.Translate.FolderID == "" {
+		log.Warn("translate enabled but api_key or folder_id is missing, skipping")
+		return nil
+	}
+	log.Info("yandex translate enabled", zap.String("target_lang", cfg.Translate.TargetLang))
+	return translator.NewYandex(cfg.Translate.APIKey, cfg.Translate.FolderID, cfg.Translate.TargetLang)
 }

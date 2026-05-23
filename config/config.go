@@ -15,6 +15,7 @@ type Config struct {
 	Dispatcher DispatcherConfig
 	Metrics    MetricsConfig
 	Log        LogConfig
+	Translate  TranslateConfig
 	Channels   []string
 }
 
@@ -51,6 +52,13 @@ type EmailConfig struct {
 	Password string
 	From     string
 	To       string
+}
+
+type TranslateConfig struct {
+	Enabled    bool
+	APIKey     string
+	FolderID   string
+	TargetLang string
 }
 
 type NtfyConfig struct {
@@ -93,6 +101,8 @@ func Load(path string) (*Config, error) {
 	v.SetDefault("dispatcher.dispatch_interval", "10s")
 	v.SetDefault("email.enabled", false)
 	v.SetDefault("email.port", 587)
+	v.SetDefault("translate.enabled", false)
+	v.SetDefault("translate.target_lang", "ru")
 	v.SetDefault("ntfy.enabled", false)
 	v.SetDefault("ntfy.priority", "default")
 	v.SetDefault("metrics.enabled", false)
@@ -156,6 +166,12 @@ func Load(path string) (*Config, error) {
 			MaxSizeMB:  v.GetInt("log.max_size_mb"),
 			MaxAgeDays: v.GetInt("log.max_age_days"),
 			Compress:   v.GetBool("log.compress"),
+		},
+		Translate: TranslateConfig{
+			Enabled:    v.GetBool("translate.enabled"),
+			APIKey:     v.GetString("translate.api_key"),
+			FolderID:   v.GetString("translate.folder_id"),
+			TargetLang: v.GetString("translate.target_lang"),
 		},
 		Channels: v.GetStringSlice("channels"),
 	}, nil

@@ -30,6 +30,16 @@ func (d *DB) SaveMessage(ctx context.Context, msg model.Message) (id int64, isNe
 	return id, false, err
 }
 
+// UpdateBodyEdited sets the body_edited field for a message.
+// The dispatcher uses COALESCE(body_edited, body), so this value takes priority.
+func (d *DB) UpdateBodyEdited(ctx context.Context, id int64, bodyEdited string) error {
+	_, err := d.conn.ExecContext(ctx,
+		`UPDATE messages SET body_edited = ? WHERE id = ?`,
+		bodyEdited, id,
+	)
+	return err
+}
+
 // CountMessages returns total number of rows in messages.
 func (d *DB) CountMessages(ctx context.Context) (int, error) {
 	var n int
