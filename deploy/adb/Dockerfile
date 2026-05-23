@@ -1,6 +1,6 @@
-FROM debian:bookworm-slim
+FROM ubuntu:24.04
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends android-tools-adb && \
+    apt-get install -y --no-install-recommends adb && \
     rm -rf /var/lib/apt/lists/*
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
