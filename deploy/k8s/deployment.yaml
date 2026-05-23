@@ -21,19 +21,25 @@ spec:
     spec:
       # Оба контейнера разделяют сетевой namespace пода →
       # abb видит ADB-сервер на localhost:5037.
+      imagePullSecrets:
+        - name: ghcr-secret
+
       containers:
 
         # ── ADB sidecar ──────────────────────────────────────────────────────
         - name: adb-server
-          image: your-registry/abb-adb:latest   # <-- замените на свой registry
+          image: ghcr.io/vazzart/abb-adb:latest
           imagePullPolicy: Always
           env:
             - name: PHONE_HOST
-              value: "192.168.1.42"              # <-- IP телефона в сети
+              value: "192.168.1.36"
             - name: PHONE_PORT
-              value: "5555"
+              value: "38115"
             - name: RECONNECT_INTERVAL
-              value: "15"                        # секунд между проверками
+              value: "15"
+          volumeMounts:
+            - name: adb-keys
+              mountPath: /root/.android
           resources:
             requests:
               cpu: "50m"
@@ -44,7 +50,7 @@ spec:
 
         # ── abb app ──────────────────────────────────────────────────────────
         - name: abb
-          image: your-registry/abb:latest        # <-- замените на свой registry
+          image: ghcr.io/vazzart/abb:latest
           imagePullPolicy: Always
           args: ["config.yaml"]
           volumeMounts:
@@ -69,5 +75,8 @@ spec:
         - name: data
           persistentVolumeClaim:
             claimName: abb-data
+        - name: adb-keys
+          persistentVolumeClaim:
+            claimName: adb-keys
 
       restartPolicy: Always
