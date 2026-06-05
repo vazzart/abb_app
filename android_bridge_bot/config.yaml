@@ -70,15 +70,15 @@ schema:
   email_from: str?
   email_to: str?
   ntfy_enabled: bool
-  ntfy_server_url: url?
+  ntfy_server_url: str?
   ntfy_topic: str?
   ntfy_token: password?
   ntfy_priority:
-    - default
-    - low
-    - high
-    - urgent
-    - max
+    - "default"
+    - "low"
+    - "high"
+    - "urgent"
+    - "max"
   translate_enabled: bool
   translate_api_key: password?
   translate_folder_id: str?
