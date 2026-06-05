@@ -1,0 +1,6 @@
+#!/bin/sh
+export HOME=/data
+# Give ADB server time to fully initialize before abb tries to connect on port 5037.
+sleep 3
+echo "[abb] Starting Android Bridge Bot..."
+exec /usr/local/bin/abb /data/config.yaml

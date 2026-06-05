@@ -1,0 +1,2 @@
+#!/bin/sh
+echo "[abb] exited with code $1, signal $2"

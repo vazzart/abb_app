@@ -1,0 +1,91 @@
+configuration:
+  telegram_token:
+    name: Telegram Bot Token
+    description: Your Telegram bot token from @BotFather
+  telegram_chat_id:
+    name: Telegram Chat ID
+    description: Numeric chat ID to receive SMS notifications
+  telegram_proxy_enabled:
+    name: Enable Telegram Proxy
+    description: Route Telegram traffic through a SOCKS5 proxy
+  telegram_proxy_address:
+    name: Proxy Address
+    description: "SOCKS5 proxy address (host:port, e.g. 1.2.3.4:1080)"
+  telegram_proxy_username:
+    name: Proxy Username
+    description: Username for SOCKS5 proxy (leave empty if not required)
+  telegram_proxy_password:
+    name: Proxy Password
+    description: Password for SOCKS5 proxy
+  channels:
+    name: Active Channels
+    description: "Delivery channels to use: telegram, email, ntfy"
+  adb_device_serial:
+    name: Android Device Serial
+    description: ADB serial number (leave empty to use first detected device)
+  adb_poll_interval:
+    name: SMS Poll Interval
+    description: "How often to check for new SMS (e.g. 30s, 1m)"
+  adb_watch_interval:
+    name: Device Watch Interval
+    description: "How often to check for USB device connection (e.g. 5s)"
+  email_enabled:
+    name: Enable Email
+    description: Forward SMS via SMTP email
+  email_host:
+    name: SMTP Host
+    description: SMTP server hostname
+  email_port:
+    name: SMTP Port
+    description: SMTP port (587 for STARTTLS, 465 for SSL)
+  email_username:
+    name: SMTP Username
+    description: Email account login
+  email_password:
+    name: SMTP Password
+    description: Email account password
+  email_from:
+    name: From Address
+    description: Sender email address
+  email_to:
+    name: To Address
+    description: Recipient email address for SMS notifications
+  ntfy_enabled:
+    name: Enable Ntfy
+    description: Forward SMS via ntfy push notifications
+  ntfy_server_url:
+    name: Ntfy Server URL
+    description: "URL of your ntfy server (e.g. https://ntfy.sh)"
+  ntfy_topic:
+    name: Ntfy Topic
+    description: Ntfy topic name (choose a unique private name)
+  ntfy_token:
+    name: Ntfy Token
+    description: Bearer token for ntfy authentication (leave empty if not required)
+  ntfy_priority:
+    name: Ntfy Priority
+    description: "Notification priority: low, default, high, urgent, max"
+  translate_enabled:
+    name: Enable Translation
+    description: Translate SMS using Yandex Translate
+  translate_api_key:
+    name: Yandex API Key
+    description: Yandex Cloud API key for translation
+  translate_folder_id:
+    name: Yandex Folder ID
+    description: Yandex Cloud folder ID
+  translate_target_lang:
+    name: Target Language
+    description: "Language code to translate into (e.g. ru, en)"
+  dispatcher_max_attempts:
+    name: Max Delivery Attempts
+    description: Maximum retry attempts for a failed message
+  dispatcher_retry_base_interval:
+    name: Retry Base Interval
+    description: "Base interval for exponential backoff (e.g. 1m)"
+  dispatcher_dispatch_interval:
+    name: Dispatch Interval
+    description: "How often the dispatcher checks the outbox (e.g. 10s)"
+  metrics_enabled:
+    name: Enable Prometheus Metrics
+    description: Expose Prometheus metrics on port 9090

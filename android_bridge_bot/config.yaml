@@ -1,0 +1,89 @@
+name: "Android Bridge Bot"
+description: "Reads SMS from an Android phone via USB/ADB and forwards them to Telegram, Email, or Ntfy."
+version: "1.0.0"
+slug: "android_bridge_bot"
+url: "https://github.com/vazzart/abb_app"
+arch:
+  - aarch64
+  - amd64
+
+devices:
+  - /dev/bus/usb
+
+apparmor: false
+
+map:
+  - data:rw
+
+init: false
+
+options:
+  telegram_token: ""
+  telegram_chat_id: 0
+  telegram_proxy_enabled: false
+  telegram_proxy_address: ""
+  telegram_proxy_username: ""
+  telegram_proxy_password: ""
+  channels:
+    - telegram
+  adb_device_serial: ""
+  adb_poll_interval: "30s"
+  adb_watch_interval: "5s"
+  email_enabled: false
+  email_host: "smtp.gmail.com"
+  email_port: 587
+  email_username: ""
+  email_password: ""
+  email_from: ""
+  email_to: ""
+  ntfy_enabled: false
+  ntfy_server_url: "https://ntfy.sh"
+  ntfy_topic: "sms"
+  ntfy_token: ""
+  ntfy_priority: "default"
+  translate_enabled: false
+  translate_api_key: ""
+  translate_folder_id: ""
+  translate_target_lang: "ru"
+  dispatcher_max_attempts: 5
+  dispatcher_retry_base_interval: "1m"
+  dispatcher_dispatch_interval: "10s"
+  metrics_enabled: false
+
+schema:
+  telegram_token: str
+  telegram_chat_id: int
+  telegram_proxy_enabled: bool
+  telegram_proxy_address: str?
+  telegram_proxy_username: str?
+  telegram_proxy_password: password?
+  channels:
+    - str
+  adb_device_serial: str?
+  adb_poll_interval: str
+  adb_watch_interval: str
+  email_enabled: bool
+  email_host: str?
+  email_port: int?
+  email_username: str?
+  email_password: password?
+  email_from: str?
+  email_to: str?
+  ntfy_enabled: bool
+  ntfy_server_url: url?
+  ntfy_topic: str?
+  ntfy_token: password?
+  ntfy_priority:
+    - default
+    - low
+    - high
+    - urgent
+    - max
+  translate_enabled: bool
+  translate_api_key: password?
+  translate_folder_id: str?
+  translate_target_lang: str?
+  dispatcher_max_attempts: int
+  dispatcher_retry_base_interval: str
+  dispatcher_dispatch_interval: str
+  metrics_enabled: bool

@@ -1,0 +1,8 @@
+#!/bin/sh
+# Run ADB server in foreground (nodaemon) — required by S6 longrun type.
+# Do NOT use 'adb start-server': it daemonizes and S6 restarts it in an infinite loop.
+export HOME=/data
+mkdir -p /data/.android
+chmod 700 /data/.android
+/usr/bin/adb kill-server 2>/dev/null || true
+exec /usr/bin/adb -P 5037 nodaemon server
