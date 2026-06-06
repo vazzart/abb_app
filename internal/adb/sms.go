@@ -27,12 +27,13 @@ var (
 
 // Poller periodically reads new SMS via the ADB server and emits them on Messages.
 type Poller struct {
-	client   gadb.Client
-	serial   string
-	interval time.Duration
-	lastID   int64
-	log      *zap.Logger
-	Messages chan model.Message
+	client     gadb.Client
+	serial     string
+	deviceName string
+	interval   time.Duration
+	lastID     int64
+	log        *zap.Logger
+	Messages   chan model.Message
 }
 
 // FetchMaxAndroidID queries the device's SMS inbox and returns the current
@@ -57,15 +58,17 @@ func FetchMaxAndroidID(device *gadb.Device) (int64, error) {
 }
 
 // NewPoller creates a new SMS poller. initialLastID seeds the deduplication
-// cursor so already-existing SMS are skipped.
-func NewPoller(client gadb.Client, serial string, interval time.Duration, initialLastID int64, log *zap.Logger) *Poller {
+// cursor so already-existing SMS are skipped. deviceName is set on every
+// message emitted so receivers know which phone the SMS came from.
+func NewPoller(client gadb.Client, serial, deviceName string, interval time.Duration, initialLastID int64, log *zap.Logger) *Poller {
 	return &Poller{
-		client:   client,
-		serial:   serial,
-		interval: interval,
-		lastID:   initialLastID,
-		log:      log,
-		Messages: make(chan model.Message, 100),
+		client:     client,
+		serial:     serial,
+		deviceName: deviceName,
+		interval:   interval,
+		lastID:     initialLastID,
+		log:        log,
+		Messages:   make(chan model.Message, 100),
 	}
 }
 
@@ -133,6 +136,7 @@ func (p *Poller) poll(ctx context.Context) {
 		if id <= p.lastID {
 			continue
 		}
+		msg.DeviceName = p.deviceName
 		select {
 		case p.Messages <- msg:
 		case <-ctx.Done():

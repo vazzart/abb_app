@@ -30,7 +30,7 @@ func (n *NtfySender) Name() string { return "ntfy" }
 func (n *NtfySender) Send(ctx context.Context, msg model.Message) error {
 	url := strings.TrimRight(n.cfg.ServerURL, "/") + "/" + n.cfg.Topic
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, strings.NewReader(msg.Body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, strings.NewReader(FormatMessage(msg)))
 	if err != nil {
 		return fmt.Errorf("ntfy: create request: %w", err)
 	}

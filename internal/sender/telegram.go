@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"regexp"
+	"strings"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"golang.org/x/net/proxy"
@@ -25,6 +26,23 @@ var reDigitRun = regexp.MustCompile(`\d{3,}`)
 func WrapDigits(text string) string {
 	escaped := html.EscapeString(text)
 	return reDigitRun.ReplaceAllString(escaped, "<code>$0</code>")
+}
+
+// FormatTelegramMessage formats a message as Telegram HTML.
+// Labels are bold; digits in body and translation are wrapped in <code>.
+// Exported for testing.
+func FormatTelegramMessage(msg model.Message) string {
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "<b>From:</b> %s\n", html.EscapeString(msg.Address))
+	fmt.Fprintf(&sb, "<b>Time:</b> %s\n", msg.ReceivedAt.Format("2006-01-02 15:04"))
+	if msg.DeviceName != "" {
+		fmt.Fprintf(&sb, "<b>To:</b> %s\n", html.EscapeString(msg.DeviceName))
+	}
+	fmt.Fprintf(&sb, "<b>Text:</b> %s", WrapDigits(msg.Body))
+	if msg.Translation != "" {
+		fmt.Fprintf(&sb, "\n<b>Translate:</b> %s", WrapDigits(msg.Translation))
+	}
+	return sb.String()
 }
 
 // TelegramSender delivers messages via the Telegram Bot API.
@@ -51,9 +69,7 @@ func NewTelegramSender(token string, chatID int64, proxyCfg config.ProxyConfig) 
 func (t *TelegramSender) Name() string { return "telegram" }
 
 func (t *TelegramSender) Send(_ context.Context, msg model.Message) error {
-	transformed := msg
-	transformed.Body = WrapDigits(msg.Body)
-	m := tgbotapi.NewMessage(t.chatID, FormatMessage(transformed))
+	m := tgbotapi.NewMessage(t.chatID, FormatTelegramMessage(msg))
 	m.ParseMode = tgbotapi.ModeHTML
 	_, err := t.bot.Send(m)
 	return err

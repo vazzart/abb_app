@@ -44,7 +44,7 @@ func (e *EmailSender) Send(_ context.Context, msg model.Message) error {
 // BuildEmailMessage constructs a minimal RFC 2822 email body.
 func BuildEmailMessage(from, to string, msg model.Message) []byte {
 	subject := fmt.Sprintf("SMS from %s", msg.Address)
-	body := msg.Body
+	body := FormatMessage(msg)
 	raw := fmt.Sprintf(
 		"From: %s\r\nTo: %s\r\nSubject: %s\r\n\r\n%s",
 		from, to, subject, body,

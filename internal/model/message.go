@@ -3,10 +3,12 @@ package model
 import "time"
 
 type Message struct {
-	AndroidID  string
-	Address    string
-	Body       string
-	ReceivedAt time.Time
+	AndroidID   string
+	Address     string
+	Body        string
+	Translation string
+	DeviceName  string
+	ReceivedAt  time.Time
 }
 
 type OutboxItem struct {

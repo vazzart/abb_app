@@ -3,6 +3,7 @@ package sender
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"abb/internal/model"
 )
@@ -14,7 +15,18 @@ type Sender interface {
 	Send(ctx context.Context, msg model.Message) error
 }
 
-// FormatMessage produces the text sent to the recipient.
+// FormatMessage formats a message as plain text for email and ntfy.
+// Fields DeviceName and Translation are included only when non-empty.
 func FormatMessage(msg model.Message) string {
-	return fmt.Sprintf("[%s] %s", msg.Address, msg.Body)
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "From: %s\n", msg.Address)
+	fmt.Fprintf(&sb, "Time: %s\n", msg.ReceivedAt.Format("2006-01-02 15:04"))
+	if msg.DeviceName != "" {
+		fmt.Fprintf(&sb, "To: %s\n", msg.DeviceName)
+	}
+	fmt.Fprintf(&sb, "Text: %s", msg.Body)
+	if msg.Translation != "" {
+		fmt.Fprintf(&sb, "\nTranslate: %s", msg.Translation)
+	}
+	return sb.String()
 }

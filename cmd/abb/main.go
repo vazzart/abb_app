@@ -109,6 +109,7 @@ func main() {
 			case adb.Connected:
 				devices, devErr := adbClient.DeviceList()
 				var startID int64
+				var deviceName string
 				if devErr != nil {
 					log.Warn("could not list devices for startup cursor", zap.Error(devErr))
 				} else {
@@ -120,17 +121,19 @@ func main() {
 							} else {
 								startID = id
 							}
+							deviceName = fetchDeviceName(&devices[i])
 							break
 						}
 					}
 				}
 				log.Info("starting SMS poller",
 					zap.String("serial", event.Serial),
+					zap.String("device", deviceName),
 					zap.Int64("last_android_id", startID),
 				)
 				var pollerCtx context.Context
 				pollerCtx, pollerCancel = context.WithCancel(ctx)
-				poller := adb.NewPoller(adbClient, event.Serial, cfg.ADB.PollInterval, startID, log)
+				poller := adb.NewPoller(adbClient, event.Serial, deviceName, cfg.ADB.PollInterval, startID, log)
 				go poller.Run(pollerCtx)
 				go processMessages(pollerCtx, poller, database, cfg.Channels, disp, tr, log)
 
@@ -241,9 +244,8 @@ func saveAndEnqueue(
 		if err != nil {
 			log.Warn("translate failed", zap.Error(err))
 		} else if lang != tr.TargetLang() {
-			bodyEdited := msg.Body + "\n\n(" + translated + ")"
-			if err := database.UpdateBodyEdited(ctx, id, bodyEdited); err != nil {
-				log.Error("update body_edited", zap.Error(err))
+			if err := database.UpdateTranslation(ctx, id, translated); err != nil {
+				log.Error("update translation", zap.Error(err))
 			} else {
 				log.Info("translated message",
 					zap.String("from", lang),
@@ -279,6 +281,14 @@ func buildTranslator(cfg *config.Config, log *zap.Logger) *translator.Yandex {
 	return translator.NewYandex(cfg.Translate.APIKey, cfg.Translate.FolderID, cfg.Translate.TargetLang)
 }
 
+func fetchDeviceName(device *gadb.Device) string {
+	out, err := device.RunShellCommand("getprop ro.product.model")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(out)
+}
+
 func sendStartupNotification(ctx context.Context, adbClient *gadb.Client, senders map[string]sender.Sender, log *zap.Logger) {
 	devices, err := adbClient.DeviceList()
 
@@ -290,13 +300,12 @@ func sendStartupNotification(ctx context.Context, adbClient *gadb.Client, sender
 		for i := range devices {
 			connected++
 			serial := devices[i].Serial()
-			if out, err := devices[i].RunShellCommand("getprop ro.product.model"); err == nil {
-				if name := strings.TrimSpace(out); name != "" {
-					lines = append(lines, fmt.Sprintf("  %s (%s)", name, serial))
-					continue
-				}
+			name := fetchDeviceName(&devices[i])
+			if name != "" {
+				lines = append(lines, fmt.Sprintf("  %s (%s)", name, serial))
+			} else {
+				lines = append(lines, fmt.Sprintf("  %s", serial))
 			}
-			lines = append(lines, fmt.Sprintf("  %s", serial))
 		}
 	}
 

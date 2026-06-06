@@ -10,9 +10,9 @@ import (
 // Returns (rowID, true, nil) for new messages, (rowID, false, nil) for duplicates.
 func (d *DB) SaveMessage(ctx context.Context, msg model.Message) (id int64, isNew bool, err error) {
 	res, err := d.conn.ExecContext(ctx,
-		`INSERT OR IGNORE INTO messages (android_id, address, body, received_at)
-		 VALUES (?, ?, ?, ?)`,
-		msg.AndroidID, msg.Address, msg.Body, msg.ReceivedAt,
+		`INSERT OR IGNORE INTO messages (android_id, address, body, device_name, received_at)
+		 VALUES (?, ?, ?, ?, ?)`,
+		msg.AndroidID, msg.Address, msg.Body, msg.DeviceName, msg.ReceivedAt,
 	)
 	if err != nil {
 		return 0, false, err
@@ -30,12 +30,11 @@ func (d *DB) SaveMessage(ctx context.Context, msg model.Message) (id int64, isNe
 	return id, false, err
 }
 
-// UpdateBodyEdited sets the body_edited field for a message.
-// The dispatcher uses COALESCE(body_edited, body), so this value takes priority.
-func (d *DB) UpdateBodyEdited(ctx context.Context, id int64, bodyEdited string) error {
+// UpdateTranslation stores the translated text for a message.
+func (d *DB) UpdateTranslation(ctx context.Context, id int64, translation string) error {
 	_, err := d.conn.ExecContext(ctx,
-		`UPDATE messages SET body_edited = ? WHERE id = ?`,
-		bodyEdited, id,
+		`UPDATE messages SET translation = ? WHERE id = ?`,
+		translation, id,
 	)
 	return err
 }
@@ -47,13 +46,12 @@ func (d *DB) CountMessages(ctx context.Context) (int, error) {
 	return n, err
 }
 
-// GetMessageByID returns a message by its DB id.
-// Returns body_edited instead of body when an edit is present (T5 logic, no-op until Stage 5).
+// GetMessageByID returns a message by its DB id, including device name and translation.
 func (d *DB) GetMessageByID(ctx context.Context, id int64) (model.Message, error) {
 	var msg model.Message
 	err := d.conn.QueryRowContext(ctx,
-		`SELECT android_id, address, COALESCE(body_edited, body), received_at
+		`SELECT android_id, address, body, COALESCE(device_name, ''), COALESCE(translation, ''), received_at
 		 FROM messages WHERE id = ?`, id,
-	).Scan(&msg.AndroidID, &msg.Address, &msg.Body, &msg.ReceivedAt)
+	).Scan(&msg.AndroidID, &msg.Address, &msg.Body, &msg.DeviceName, &msg.Translation, &msg.ReceivedAt)
 	return msg, err
 }

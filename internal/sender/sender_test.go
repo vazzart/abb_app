@@ -10,27 +10,33 @@ import (
 	"abb/internal/sender"
 )
 
-// T3-02: формат сообщения — [address] body
+// T3-02: plain-text формат для email/ntfy
 func TestFormatMessage(t *testing.T) {
+	fixedTime := time.Date(2026, 1, 15, 10, 30, 0, 0, time.UTC)
 	tests := []struct {
 		name string
 		msg  model.Message
 		want string
 	}{
 		{
-			name: "phone number",
-			msg:  model.Message{Address: "+79001234567", Body: "Код 1234"},
-			want: "[+79001234567] Код 1234",
+			name: "minimal — no device, no translation",
+			msg:  model.Message{Address: "+79001234567", Body: "Код 1234", ReceivedAt: fixedTime},
+			want: "From: +79001234567\nTime: 2026-01-15 10:30\nText: Код 1234",
 		},
 		{
-			name: "short code",
-			msg:  model.Message{Address: "BANKFFIN", Body: "Верификация 4670\neROdR70AswV"},
-			want: "[BANKFFIN] Верификация 4670\neROdR70AswV",
+			name: "with device name",
+			msg:  model.Message{Address: "BANKFFIN", Body: "Верификация 4670", DeviceName: "Samsung A42", ReceivedAt: fixedTime},
+			want: "From: BANKFFIN\nTime: 2026-01-15 10:30\nTo: Samsung A42\nText: Верификация 4670",
 		},
 		{
-			name: "empty body",
-			msg:  model.Message{Address: "+7900", Body: ""},
-			want: "[+7900] ",
+			name: "with translation",
+			msg:  model.Message{Address: "+7900", Body: "Код 9999", Translation: "Code 9999", ReceivedAt: fixedTime},
+			want: "From: +7900\nTime: 2026-01-15 10:30\nText: Код 9999\nTranslate: Code 9999",
+		},
+		{
+			name: "all fields",
+			msg:  model.Message{Address: "+7900", Body: "Привет", Translation: "Hello", DeviceName: "Pixel 6", ReceivedAt: fixedTime},
+			want: "From: +7900\nTime: 2026-01-15 10:30\nTo: Pixel 6\nText: Привет\nTranslate: Hello",
 		},
 	}
 	for _, tc := range tests {
@@ -43,17 +49,43 @@ func TestFormatMessage(t *testing.T) {
 	}
 }
 
-// T3-02: ReceivedAt не влияет на форматирование
-func TestFormatMessage_ReceivedAtIgnored(t *testing.T) {
-	msg := model.Message{
-		Address:    "TEST",
-		Body:       "hello",
-		ReceivedAt: time.Now(),
+// T3-02: HTML-формат для Telegram с тегами <b> и <code>
+func TestFormatTelegramMessage(t *testing.T) {
+	fixedTime := time.Date(2026, 1, 15, 10, 30, 0, 0, time.UTC)
+	tests := []struct {
+		name string
+		msg  model.Message
+		want string
+	}{
+		{
+			name: "minimal",
+			msg:  model.Message{Address: "+79001234567", Body: "Код 1234", ReceivedAt: fixedTime},
+			// Address goes through html.EscapeString only — digits in phone number are NOT wrapped
+			want: "<b>From:</b> +79001234567\n<b>Time:</b> 2026-01-15 10:30\n<b>Text:</b> Код <code>1234</code>",
+		},
+		{
+			name: "with device name",
+			msg:  model.Message{Address: "BANK", Body: "Код 5678", DeviceName: "Samsung A42", ReceivedAt: fixedTime},
+			want: "<b>From:</b> BANK\n<b>Time:</b> 2026-01-15 10:30\n<b>To:</b> Samsung A42\n<b>Text:</b> Код <code>5678</code>",
+		},
+		{
+			name: "with translation",
+			msg:  model.Message{Address: "SVC", Body: "Код 1111", Translation: "Code 1111", ReceivedAt: fixedTime},
+			want: "<b>From:</b> SVC\n<b>Time:</b> 2026-01-15 10:30\n<b>Text:</b> Код <code>1111</code>\n<b>Translate:</b> Code <code>1111</code>",
+		},
+		{
+			name: "html special chars in address",
+			msg:  model.Message{Address: "A&B", Body: "ok", ReceivedAt: fixedTime},
+			want: "<b>From:</b> A&amp;B\n<b>Time:</b> 2026-01-15 10:30\n<b>Text:</b> ok",
+		},
 	}
-	got := sender.FormatMessage(msg)
-	want := "[TEST] hello"
-	if got != want {
-		t.Errorf("got %q, want %q", got, want)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := sender.FormatTelegramMessage(tc.msg)
+			if got != tc.want {
+				t.Errorf("\n got: %q\nwant: %q", got, tc.want)
+			}
+		})
 	}
 }
 
@@ -169,20 +201,15 @@ func TestWrapDigits(t *testing.T) {
 	}
 }
 
-// WrapDigits не затрагивает адрес — применяется только к body
+// WrapDigits применяется к body и translation — адрес экранируется отдельно через html.EscapeString
 func TestWrapDigits_AddressNotAffected(t *testing.T) {
-	// Адрес +79001234567 содержит 11 цифр, но FormatMessage оборачивает его в [...]
-	// WrapDigits вызывается только для body, поэтому адрес остаётся нетронутым.
-	msg := model.Message{
-		Address: "+79001234567",
-		Body:    "Код 9876",
-	}
-	// Симулируем что делает TelegramSender.Send: WrapDigits только на body
-	body := sender.WrapDigits(msg.Body)
-	formatted := sender.FormatMessage(model.Message{Address: msg.Address, Body: body})
-	want := "[+79001234567] Код <code>9876</code>"
-	if formatted != want {
-		t.Errorf("got %q, want %q", formatted, want)
+	// В FormatTelegramMessage адрес экранируется через html.EscapeString,
+	// а не через WrapDigits, чтобы цифры в номере телефона не оборачивались в <code>.
+	// Проверяем что WrapDigits корректно обрабатывает только переданный текст.
+	got := sender.WrapDigits("Код 9876")
+	want := "Код <code>9876</code>"
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
 	}
 }
 

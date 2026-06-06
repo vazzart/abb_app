@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 
 	_ "modernc.org/sqlite"
 )
@@ -83,6 +84,16 @@ func (d *DB) migrate() error {
 	for _, s := range stmts {
 		if _, err := d.conn.Exec(s); err != nil {
 			return fmt.Errorf("migrate stmt %q: %w", s[:min(len(s), 40)], err)
+		}
+	}
+
+	alterStmts := []string{
+		`ALTER TABLE messages ADD COLUMN device_name TEXT`,
+		`ALTER TABLE messages ADD COLUMN translation TEXT`,
+	}
+	for _, s := range alterStmts {
+		if _, err := d.conn.Exec(s); err != nil && !strings.Contains(err.Error(), "duplicate column name") {
+			return fmt.Errorf("migrate alter: %w", err)
 		}
 	}
 	return nil
