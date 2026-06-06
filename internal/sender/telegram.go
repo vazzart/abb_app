@@ -3,6 +3,7 @@ package sender
 import (
 	"context"
 	"fmt"
+	"html"
 	"net"
 	"net/http"
 	"regexp"
@@ -17,12 +18,13 @@ import (
 // reDigitRun matches three or more consecutive digits.
 var reDigitRun = regexp.MustCompile(`\d{3,}`)
 
-// WrapDigits surrounds every run of 3+ consecutive digits with backticks so
-// OTP codes and numeric sequences stand out visually in Telegram messages.
-// Applied only to the message body, not the sender address.
+// WrapDigits HTML-escapes the text and wraps every run of 3+ consecutive
+// digits in <code> tags so they render as monospace in Telegram HTML mode.
+// HTML escaping happens first so any < > & in the SMS body are safe.
 // Exported for testing.
 func WrapDigits(text string) string {
-	return reDigitRun.ReplaceAllString(text, "`$0`")
+	escaped := html.EscapeString(text)
+	return reDigitRun.ReplaceAllString(escaped, "<code>$0</code>")
 }
 
 // TelegramSender delivers messages via the Telegram Bot API.
@@ -52,6 +54,7 @@ func (t *TelegramSender) Send(_ context.Context, msg model.Message) error {
 	transformed := msg
 	transformed.Body = WrapDigits(msg.Body)
 	m := tgbotapi.NewMessage(t.chatID, FormatMessage(transformed))
+	m.ParseMode = tgbotapi.ModeHTML
 	_, err := t.bot.Send(m)
 	return err
 }

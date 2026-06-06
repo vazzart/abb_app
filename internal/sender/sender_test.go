@@ -117,10 +117,10 @@ func TestWrapDigits(t *testing.T) {
 		want  string
 	}{
 		// базовые случаи
-		{"exactly 3 digits", "код 123", "код `123`"},
-		{"4 digits", "Код 1234", "Код `1234`"},
-		{"6 digits OTP", "код 698754", "код `698754`"},
-		{"10 digits phone in body", "звоните 7373141234", "звоните `7373141234`"},
+		{"exactly 3 digits", "код 123", "код <code>123</code>"},
+		{"4 digits", "Код 1234", "Код <code>1234</code>"},
+		{"6 digits OTP", "код 698754", "код <code>698754</code>"},
+		{"10 digits phone in body", "звоните 7373141234", "звоните <code>7373141234</code>"},
 
 		// менее 3 цифр — без изменений
 		{"2 digits no wrap", "12 ab", "12 ab"},
@@ -129,28 +129,34 @@ func TestWrapDigits(t *testing.T) {
 		{"empty string", "", ""},
 
 		// несколько групп в одном тексте
-		{"two groups", "Код 7108, номер 7373", "Код `7108`, номер `7373`"},
-		{"mixed lengths", "12 34 567 и 89", "12 34 `567` и 89"},
+		{"two groups", "Код 7108, номер 7373", "Код <code>7108</code>, номер <code>7373</code>"},
+		{"mixed lengths", "12 34 567 и 89", "12 34 <code>567</code> и 89"},
 
 		// реальные данные с телефона
 		{
 			"real OTP with comma in body",
 			"ПОПЫТКА ВХОДА в банк.Код 7108 в случае не Вы, номер 7373!",
-			"ПОПЫТКА ВХОДА в банк.Код `7108` в случае не Вы, номер `7373`!",
+			"ПОПЫТКА ВХОДА в банк.Код <code>7108</code> в случае не Вы, номер <code>7373</code>!",
 		},
 		{
 			"real verification code",
 			"Код верификации 4670\neROdR70AswV",
-			"Код верификации `4670`\neROdR70AswV", // eROdR70AswV: только "70" — 2 цифры
+			"Код верификации <code>4670</code>\neROdR70AswV", // eROdR70AswV: только "70" — 2 цифры
 		},
 		{
 			"OSON code",
 			"OSON verification code: 698754",
-			"OSON verification code: `698754`",
+			"OSON verification code: <code>698754</code>",
 		},
 
-		// уже обёрнутые — применяем повторно (idempotency не гарантируется, документируем)
-		{"already wrapped", "`1234`", "``1234``"},
+		// HTML-спецсимволы в тексте экранируются
+		{"html chars in text", "баланс: 100<200 & 500руб", "баланс: <code>100</code>&lt;<code>200</code> &amp; <code>500</code>руб"},
+
+		// цифры вплотную к тексту без пробела — HTML-теги работают независимо от границ слов
+		{"digits adjacent to text", "код1234текст", "код<code>1234</code>текст"},
+
+		// уже обёрнутые — бэктики не HTML-спецсимволы, цифры внутри обернутся
+		{"already wrapped", "`1234`", "`<code>1234</code>`"},
 	}
 
 	for _, tc := range cases {
@@ -174,7 +180,7 @@ func TestWrapDigits_AddressNotAffected(t *testing.T) {
 	// Симулируем что делает TelegramSender.Send: WrapDigits только на body
 	body := sender.WrapDigits(msg.Body)
 	formatted := sender.FormatMessage(model.Message{Address: msg.Address, Body: body})
-	want := "[+79001234567] Код `9876`"
+	want := "[+79001234567] Код <code>9876</code>"
 	if formatted != want {
 		t.Errorf("got %q, want %q", formatted, want)
 	}
@@ -185,7 +191,7 @@ func TestWrapDigits_AddressNotAffected(t *testing.T) {
 func TestWrapDigits_AppliedToEditedBody(t *testing.T) {
 	edited := "Новый текст 9999"
 	got := sender.WrapDigits(edited)
-	want := "Новый текст `9999`"
+	want := "Новый текст <code>9999</code>"
 	if got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
