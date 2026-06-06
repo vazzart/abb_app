@@ -1,7 +1,7 @@
 ARG BUILD_FROM=ghcr.io/home-assistant/aarch64-base-debian:bookworm
 
 # Stage 1: cross-compile Go binary
-FROM --platform=linux/amd64 golang:1.25-bookworm AS builder
+FROM golang:1.25-bookworm AS builder
 ARG TARGETARCH=arm64
 WORKDIR /build
 COPY src/go.mod src/go.sum ./
