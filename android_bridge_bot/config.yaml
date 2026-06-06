@@ -73,12 +73,7 @@ schema:
   ntfy_server_url: str?
   ntfy_topic: str?
   ntfy_token: password?
-  ntfy_priority:
-    - "default"
-    - "low"
-    - "high"
-    - "urgent"
-    - "max"
+  ntfy_priority: "list(default|low|high|urgent|max)"
   translate_enabled: bool
   translate_api_key: password?
   translate_folder_id: str?
