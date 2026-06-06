@@ -4,3 +4,4 @@
 /abb.exe
 deploy/k8s/secret.yaml
 /config.yaml
+android_bridge_bot/src/

@@ -1,7 +1,8 @@
 ARG BUILD_FROM=ghcr.io/home-assistant/aarch64-base-debian:bookworm
 
 # Stage 1: cross-compile Go binary
-FROM golang:1.25-bookworm AS builder
+# $BUILDPLATFORM = native CI platform (amd64); Go cross-compiles for TARGETARCH without QEMU.
+FROM --platform=$BUILDPLATFORM golang:1.25-bookworm AS builder
 ARG TARGETARCH=arm64
 WORKDIR /build
 COPY src/go.mod src/go.sum ./
