@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -24,6 +25,8 @@ import (
 	"abb/internal/sender"
 	"abb/internal/translator"
 )
+
+const version = "1.0.3"
 
 func main() {
 	cfgPath := "config.yaml"
@@ -60,6 +63,8 @@ func main() {
 
 	tr := buildTranslator(cfg, log)
 	senders := buildSenders(cfg, log)
+
+	sendStartupNotification(ctx, &adbClient, senders, log)
 
 	disp := dispatcher.New(database, senders, cfg.Dispatcher.DispatchInterval, 100*time.Millisecond, log)
 	disp.SetHooks(&dispatcher.DeliveryHooks{
@@ -272,4 +277,38 @@ func buildTranslator(cfg *config.Config, log *zap.Logger) *translator.Yandex {
 	}
 	log.Info("yandex translate enabled", zap.String("target_lang", cfg.Translate.TargetLang))
 	return translator.NewYandex(cfg.Translate.APIKey, cfg.Translate.FolderID, cfg.Translate.TargetLang)
+}
+
+func sendStartupNotification(ctx context.Context, adbClient *gadb.Client, senders map[string]sender.Sender, log *zap.Logger) {
+	devices, err := adbClient.DeviceList()
+
+	connected := 0
+	var lines []string
+	if err != nil {
+		log.Warn("startup notification: could not list devices", zap.Error(err))
+	} else {
+		for i := range devices {
+			connected++
+			serial := devices[i].Serial()
+			if out, err := devices[i].RunShellCommand("getprop ro.product.model"); err == nil {
+				if name := strings.TrimSpace(out); name != "" {
+					lines = append(lines, fmt.Sprintf("  %s (%s)", name, serial))
+					continue
+				}
+			}
+			lines = append(lines, fmt.Sprintf("  %s", serial))
+		}
+	}
+
+	body := fmt.Sprintf("Started. Version: %s\nDevices connected: %d", version, connected)
+	if len(lines) > 0 {
+		body += "\n" + strings.Join(lines, "\n")
+	}
+
+	msg := model.Message{Address: "ABB", Body: body, ReceivedAt: time.Now()}
+	for name, s := range senders {
+		if err := s.Send(ctx, msg); err != nil {
+			log.Warn("startup notification send failed", zap.String("channel", name), zap.Error(err))
+		}
+	}
 }
