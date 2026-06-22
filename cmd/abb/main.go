@@ -26,7 +26,7 @@ import (
 	"abb/internal/translator"
 )
 
-const version = "1.0.4"
+const version = "1.0.5"
 
 func main() {
 	cfgPath := "config.yaml"
@@ -110,6 +110,7 @@ func main() {
 				devices, devErr := adbClient.DeviceList()
 				var startID int64
 				var deviceName string
+				var simInfo map[string]string
 				if devErr != nil {
 					log.Warn("could not list devices for startup cursor", zap.Error(devErr))
 				} else {
@@ -122,6 +123,13 @@ func main() {
 								startID = id
 							}
 							deviceName = fetchDeviceName(&devices[i])
+							si, err := adb.FetchSimInfo(&devices[i])
+							if err != nil {
+								log.Warn("could not fetch SIM info", zap.Error(err))
+							} else {
+								simInfo = si
+								log.Info("loaded SIM info", zap.Any("sims", si))
+							}
 							break
 						}
 					}
@@ -133,7 +141,7 @@ func main() {
 				)
 				var pollerCtx context.Context
 				pollerCtx, pollerCancel = context.WithCancel(ctx)
-				poller := adb.NewPoller(adbClient, event.Serial, deviceName, cfg.ADB.PollInterval, startID, log)
+				poller := adb.NewPoller(adbClient, event.Serial, deviceName, cfg.ADB.PollInterval, startID, simInfo, log)
 				go poller.Run(pollerCtx)
 				go processMessages(pollerCtx, poller, database, cfg.Channels, disp, tr, log)
 

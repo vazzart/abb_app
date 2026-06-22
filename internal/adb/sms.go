@@ -23,7 +23,59 @@ var (
 	// reDateSuffix matches ", date=<digits>" anchored to end of string (not line).
 	// Handles multiline bodies: date is always the last token in a row.
 	reDateSuffix = regexp.MustCompile(`,\s*date=(\d+)\s*$`)
+
+	reSubscriptionID = regexp.MustCompile(`subscription_id=(-?\d+)`)
 )
+
+// FetchSimInfo queries the device's SIM info table and returns a map of
+// subscription_id (the SMS "subscription_id" field) to a human-readable name.
+// On devices that don't expose siminfo the function returns an empty map.
+func FetchSimInfo(device *gadb.Device) (map[string]string, error) {
+	out, err := device.RunShellCommand(simInfoShellCmd)
+	if err != nil {
+		return nil, fmt.Errorf("adb siminfo: %w", err)
+	}
+	return parseSimInfo(out), nil
+}
+
+var (
+	reSimID          = regexp.MustCompile(`_id=(\d+)`)
+	reSimDisplayName = regexp.MustCompile(`display_name=([^,]+)`)
+	reSimSlot        = regexp.MustCompile(`sim_slot_index=(-?\d+)`)
+)
+
+func parseSimInfo(raw string) map[string]string {
+	result := make(map[string]string)
+	raw = strings.TrimSpace(raw)
+	if raw == "" || strings.HasPrefix(raw, "No result") || strings.HasPrefix(raw, "Exception") {
+		return result
+	}
+	parts := reRowSplit.Split(raw, -1)
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		idM := reSimID.FindStringSubmatch(part)
+		nameM := reSimDisplayName.FindStringSubmatch(part)
+		slotM := reSimSlot.FindStringSubmatch(part)
+		if idM == nil {
+			continue
+		}
+		name := ""
+		if nameM != nil {
+			name = strings.TrimSpace(nameM[1])
+		}
+		if name == "" && slotM != nil {
+			name = "SIM " + slotM[1]
+		}
+		if name == "" {
+			name = "SIM " + idM[1]
+		}
+		result[idM[1]] = name
+	}
+	return result
+}
 
 // Poller periodically reads new SMS via the ADB server and emits them on Messages.
 type Poller struct {
@@ -32,6 +84,7 @@ type Poller struct {
 	deviceName string
 	interval   time.Duration
 	lastID     int64
+	simInfo    map[string]string
 	log        *zap.Logger
 	Messages   chan model.Message
 }
@@ -60,13 +113,18 @@ func FetchMaxAndroidID(device *gadb.Device) (int64, error) {
 // NewPoller creates a new SMS poller. initialLastID seeds the deduplication
 // cursor so already-existing SMS are skipped. deviceName is set on every
 // message emitted so receivers know which phone the SMS came from.
-func NewPoller(client gadb.Client, serial, deviceName string, interval time.Duration, initialLastID int64, log *zap.Logger) *Poller {
+// simInfo maps subscription_id strings to SIM display names; may be nil.
+func NewPoller(client gadb.Client, serial, deviceName string, interval time.Duration, initialLastID int64, simInfo map[string]string, log *zap.Logger) *Poller {
+	if simInfo == nil {
+		simInfo = make(map[string]string)
+	}
 	return &Poller{
 		client:     client,
 		serial:     serial,
 		deviceName: deviceName,
 		interval:   interval,
 		lastID:     initialLastID,
+		simInfo:    simInfo,
 		log:        log,
 		Messages:   make(chan model.Message, 100),
 	}
@@ -88,9 +146,12 @@ func (p *Poller) Run(ctx context.Context) {
 	}
 }
 
-// smsShellCmd is passed as a single command string to the Android shell so that
-// single-quoted arguments (e.g. 'date DESC') are handled correctly by the shell.
-const smsShellCmd = "content query --uri content://sms/inbox --projection '_id,address,body,date' --sort 'date DESC'"
+// smsShellCmd queries SMS inbox. subscription_id is placed before body so that
+// the body parser (which finds content between "body=" and the trailing "date=") works correctly.
+const smsShellCmd = "content query --uri content://sms/inbox --projection '_id,subscription_id,address,body,date' --sort 'date DESC'"
+
+// simInfoShellCmd queries the SIM card info table.
+const simInfoShellCmd = "content query --uri content://telephony/siminfo --projection '_id,display_name,sim_slot_index'"
 
 func (p *Poller) poll(ctx context.Context) {
 	if ctx.Err() != nil {
@@ -137,6 +198,11 @@ func (p *Poller) poll(ctx context.Context) {
 			continue
 		}
 		msg.DeviceName = p.deviceName
+		if msg.SubscriptionID != "" {
+			if name, ok := p.simInfo[msg.SubscriptionID]; ok {
+				msg.SimName = name
+			}
+		}
 		select {
 		case p.Messages <- msg:
 		case <-ctx.Done():
@@ -198,10 +264,16 @@ func parseRow(row string) (model.Message, error) {
 	dateTagIdx := reDateSuffix.FindStringIndex(row)
 	body := row[bodyStart:dateTagIdx[0]]
 
+	subID := ""
+	if subMatch := reSubscriptionID.FindStringSubmatch(row); subMatch != nil {
+		subID = subMatch[1]
+	}
+
 	return model.Message{
-		AndroidID:  idMatch[1],
-		Address:    address,
-		Body:       body,
-		ReceivedAt: time.UnixMilli(dateMs),
+		AndroidID:      idMatch[1],
+		SubscriptionID: subID,
+		Address:        address,
+		Body:           body,
+		ReceivedAt:     time.UnixMilli(dateMs),
 	}, nil
 }

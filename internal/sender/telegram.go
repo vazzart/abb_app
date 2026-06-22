@@ -35,8 +35,16 @@ func FormatTelegramMessage(msg model.Message) string {
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "<b>From:</b> %s\n", html.EscapeString(msg.Address))
 	fmt.Fprintf(&sb, "<b>Time:</b> %s\n", msg.ReceivedAt.Format("2006-01-02 15:04"))
-	if msg.DeviceName != "" {
-		fmt.Fprintf(&sb, "<b>To:</b> %s\n", html.EscapeString(msg.DeviceName))
+	if msg.DeviceName != "" || msg.SimName != "" {
+		to := html.EscapeString(msg.DeviceName)
+		if msg.SimName != "" {
+			if to != "" {
+				to += " / " + html.EscapeString(msg.SimName)
+			} else {
+				to = html.EscapeString(msg.SimName)
+			}
+		}
+		fmt.Fprintf(&sb, "<b>To:</b> %s\n", to)
 	}
 	fmt.Fprintf(&sb, "<b>Text:</b> %s", WrapDigits(msg.Body))
 	if msg.Translation != "" {
