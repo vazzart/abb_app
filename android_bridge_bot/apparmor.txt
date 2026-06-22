@@ -1,0 +1,61 @@
+#include <tunables/global>
+
+profile android_bridge_bot flags=(attach_disconnected,mediate_deleted) {
+  #include <abstractions/base>
+
+  # Capabilities needed by s6-overlay and adb
+  capability dac_override,
+  capability dac_read_search,
+  capability setuid,
+  capability setgid,
+  capability fowner,
+  capability chown,
+  capability net_bind_service,
+
+  # Network (Telegram API, ADB server, SMTP, ntfy)
+  network tcp,
+  network udp,
+
+  # Main binary
+  /usr/local/bin/abb ix,
+
+  # adb binary and libs
+  /usr/bin/adb ix,
+  /usr/lib/** rm,
+  /lib/** rm,
+
+  # s6-overlay scripts and binaries
+  /package/** ix,
+  /command/** ix,
+  /usr/bin/** ix,
+  /usr/sbin/** ix,
+  /bin/** ix,
+  /sbin/** ix,
+
+  # Persistent data: DB, config, logs
+  /data/** rw,
+  /tmp/** rw,
+  /run/** rw,
+
+  # USB devices for ADB
+  /dev/bus/usb/** rw,
+  /dev/usb/** rw,
+
+  # Proc / sys (read-only, deny writes)
+  @{PROC}/[0-9]*/fd/ r,
+  @{PROC}/[0-9]*/fdinfo/ r,
+  @{PROC}/[0-9]*/mountinfo r,
+  @{PROC}/[0-9]*/stat r,
+  @{PROC}/[0-9]*/status r,
+  @{PROC}/sys/kernel/hostname r,
+  @{PROC}/sys/net/** r,
+
+  deny @{PROC}/* w,
+  deny /sys/[^f]*/** wklx,
+  deny /sys/f[^s]*/** wklx,
+  deny /sys/fs/[^c]*/** wklx,
+  deny /sys/fs/c[^g]*/** wklx,
+  deny /sys/fs/cg[^r]*/** wklx,
+  deny /sys/firmware/** rwklx,
+  deny /sys/kernel/security/** rwklx,
+}
