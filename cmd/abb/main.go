@@ -26,7 +26,7 @@ import (
 	"abb/internal/translator"
 )
 
-const version = "1.0.6"
+const version = "1.0.7"
 
 func main() {
 	cfgPath := "config.yaml"
