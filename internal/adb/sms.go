@@ -25,7 +25,7 @@ var (
 	// Handles multiline bodies: date is always the last token in a row.
 	reDateSuffix = regexp.MustCompile(`,\s*date=(\d+)\s*$`)
 
-	reSubscriptionID = regexp.MustCompile(`subscription_id=(-?\d+)`)
+	reSubscriptionID = regexp.MustCompile(`(?:subscription_id|sub_id)=(-?\d+)`)
 )
 
 // FetchSimInfo queries the device's SIM info table and returns a map of
@@ -78,6 +78,14 @@ func parseSimInfo(raw string) map[string]string {
 	return result
 }
 
+type smsCmd int
+
+const (
+	smsCmdFull   smsCmd = iota // subscription_id
+	smsCmdSubID                // sub_id
+	smsCmdCompat               // no SIM column
+)
+
 // Poller periodically reads new SMS via the ADB server and emits them on Messages.
 type Poller struct {
 	client     gadb.Client
@@ -86,7 +94,7 @@ type Poller struct {
 	interval   time.Duration
 	lastID     int64
 	simInfo    map[string]string
-	compatMode bool // true when device lacks subscription_id column
+	cmd        smsCmd
 	log        *zap.Logger
 	Messages   chan model.Message
 }
@@ -94,30 +102,28 @@ type Poller struct {
 // FetchMaxAndroidID queries the device's SMS inbox and returns the current
 // maximum android_id. Used at startup to skip all SMS already on the device.
 func FetchMaxAndroidID(device *gadb.Device) (int64, error) {
-	out, err := device.RunShellCommand(smsShellCmd)
-	if err != nil {
-		return 0, fmt.Errorf("adb shell: %w", err)
-	}
-	msgs, err := ParseSMSOutput(out)
-	if errors.Is(err, errSQLite) {
-		// Device doesn't support subscription_id — retry with compat query.
-		out, err = device.RunShellCommand(smsShellCmdCompat)
+	for _, cmd := range []string{smsShellCmd, smsShellCmdSubID, smsShellCmdCompat} {
+		out, err := device.RunShellCommand(cmd)
 		if err != nil {
-			return 0, fmt.Errorf("adb shell compat: %w", err)
+			return 0, fmt.Errorf("adb shell: %w", err)
 		}
-		msgs, err = ParseSMSOutput(out)
-	}
-	if err != nil {
-		return 0, fmt.Errorf("parse sms: %w", err)
-	}
-	var maxID int64
-	for _, msg := range msgs {
-		id, _ := strconv.ParseInt(msg.AndroidID, 10, 64)
-		if id > maxID {
-			maxID = id
+		msgs, err := ParseSMSOutput(out)
+		if errors.Is(err, errSQLite) {
+			continue
 		}
+		if err != nil {
+			return 0, fmt.Errorf("parse sms: %w", err)
+		}
+		var maxID int64
+		for _, msg := range msgs {
+			id, _ := strconv.ParseInt(msg.AndroidID, 10, 64)
+			if id > maxID {
+				maxID = id
+			}
+		}
+		return maxID, nil
 	}
-	return maxID, nil
+	return 0, fmt.Errorf("no working sms query found")
 }
 
 // NewPoller creates a new SMS poller. initialLastID seeds the deduplication
@@ -156,11 +162,14 @@ func (p *Poller) Run(ctx context.Context) {
 	}
 }
 
-// smsShellCmd queries SMS inbox with subscription_id (Android 5.1+).
+// smsShellCmd queries SMS inbox with subscription_id (standard Android 5.1+).
 // subscription_id is placed before body so the body parser works correctly.
 const smsShellCmd = "content query --uri content://sms/inbox --projection '_id,subscription_id,address,body,date' --sort 'date DESC'"
 
-// smsShellCmdCompat is a fallback for devices where subscription_id column is missing.
+// smsShellCmdSubID is a fallback for devices that use sub_id instead of subscription_id (e.g. MTS/custom ROMs).
+const smsShellCmdSubID = "content query --uri content://sms/inbox --projection '_id,sub_id,address,body,date' --sort 'date DESC'"
+
+// smsShellCmdCompat is a last-resort fallback with no SIM column.
 const smsShellCmdCompat = "content query --uri content://sms/inbox --projection '_id,address,body,date' --sort 'date DESC'"
 
 // simInfoShellCmd queries the SIM card info table.
@@ -193,11 +202,8 @@ func (p *Poller) poll(ctx context.Context) {
 		return
 	}
 
-	cmd := smsShellCmd
-	if p.compatMode {
-		cmd = smsShellCmdCompat
-	}
-	out, err := device.RunShellCommand(cmd)
+	shellCmd := [...]string{smsShellCmd, smsShellCmdSubID, smsShellCmdCompat}[p.cmd]
+	out, err := device.RunShellCommand(shellCmd)
 	if err != nil {
 		p.log.Error("adb content query failed", zap.Error(err))
 		return
@@ -205,10 +211,16 @@ func (p *Poller) poll(ctx context.Context) {
 
 	msgs, err := ParseSMSOutput(out)
 	if err != nil {
-		if !p.compatMode && errors.Is(err, errSQLite) {
-			p.log.Warn("subscription_id not supported on this device, switching to compat mode")
-			p.logFirstSMSRow(device)
-			p.compatMode = true
+		if errors.Is(err, errSQLite) {
+			switch p.cmd {
+			case smsCmdFull:
+				p.log.Warn("subscription_id not supported, trying sub_id")
+				p.cmd = smsCmdSubID
+			case smsCmdSubID:
+				p.log.Warn("sub_id not supported either, switching to compat mode (no SIM info)")
+				p.logFirstSMSRow(device)
+				p.cmd = smsCmdCompat
+			}
 			return
 		}
 		p.log.Error("parse sms output failed", zap.Error(err))
