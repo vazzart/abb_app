@@ -199,6 +199,7 @@ func (p *Poller) poll(ctx context.Context) {
 	if err != nil {
 		if !p.compatMode && errors.Is(err, errSQLite) {
 			p.log.Warn("subscription_id not supported on this device, switching to compat mode")
+			p.logFirstSMSRow(device)
 			p.compatMode = true
 			return
 		}
@@ -230,6 +231,25 @@ func (p *Poller) poll(ctx context.Context) {
 
 	if maxID > p.lastID {
 		p.lastID = maxID
+	}
+}
+
+// logFirstSMSRow queries the SMS inbox without a projection and logs the first
+// row verbatim so we can see all available column names on this device.
+func (p *Poller) logFirstSMSRow(device *gadb.Device) {
+	out, err := device.RunShellCommand("content query --uri content://sms/inbox --sort 'date DESC'")
+	if err != nil {
+		p.log.Warn("could not query sms columns", zap.Error(err))
+		return
+	}
+	parts := reRowSplit.Split(strings.TrimSpace(out), -1)
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		p.log.Info("sms row columns (for diagnostics)", zap.String("row", part))
+		return
 	}
 }
 
