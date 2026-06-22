@@ -1,6 +1,6 @@
 #include <tunables/global>
 
-profile android_bridge_bot flags=(attach_disconnected,mediate_deleted) {
+profile android_bridge_bot flags=(attach_disconnected,mediate_deleted,complain) {
   #include <abstractions/base>
 
   # Capabilities needed by s6-overlay and adb
