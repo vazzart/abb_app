@@ -26,7 +26,7 @@ import (
 	"abb/internal/translator"
 )
 
-const version = "1.1.2"
+const version = "1.1.3"
 
 func main() {
 	cfgPath := "config.yaml"
@@ -81,6 +81,12 @@ func main() {
 		log,
 	)
 	go rw.Run(ctx)
+
+	if cancelled, err := database.CancelStaleOutbox(ctx, 1*time.Hour); err != nil {
+		log.Warn("could not cancel stale outbox items", zap.Error(err))
+	} else if cancelled > 0 {
+		log.Info("cancelled stale outbox items from previous run", zap.Int64("count", cancelled))
+	}
 
 	if pending, err := database.CountOutbox(ctx, "pending"); err == nil && pending > 0 {
 		log.Info("pending outbox items from previous run", zap.Int("count", pending))

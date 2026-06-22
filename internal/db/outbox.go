@@ -142,6 +142,21 @@ func (d *DB) ResetToPending(ctx context.Context, id int64) error {
 	return err
 }
 
+// CancelStaleOutbox marks pending and failed outbox entries older than the given
+// duration as 'cancelled'. Called on startup to discard backlog from previous runs.
+func (d *DB) CancelStaleOutbox(ctx context.Context, olderThan time.Duration) (int64, error) {
+	cutoff := time.Now().Add(-olderThan).UTC().Format("2006-01-02 15:04:05")
+	res, err := d.conn.ExecContext(ctx,
+		`UPDATE outbox SET status = 'cancelled'
+		 WHERE status IN ('pending', 'failed') AND scheduled_at < ?`,
+		cutoff,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
 // CountExhaustedOutbox returns the count of permanently failed items (attempts >= maxAttempts).
 func (d *DB) CountExhaustedOutbox(ctx context.Context, maxAttempts int) (int, error) {
 	var n int
