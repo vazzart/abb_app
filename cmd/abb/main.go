@@ -26,7 +26,7 @@ import (
 	"abb/internal/translator"
 )
 
-const version = "1.0.9"
+const version = "1.1.0"
 
 func main() {
 	cfgPath := "config.yaml"
@@ -114,12 +114,15 @@ func main() {
 				if devErr != nil {
 					log.Warn("could not list devices for startup cursor", zap.Error(devErr))
 				} else {
+					if dbID, err := database.GetMaxAndroidID(ctx); err == nil && dbID > startID {
+						startID = dbID
+					}
 					for i := range devices {
 						if devices[i].Serial() == event.Serial {
 							id, err := adb.FetchMaxAndroidID(&devices[i])
 							if err != nil {
-								log.Warn("could not fetch device max android_id, starting from 0", zap.Error(err))
-							} else {
+								log.Warn("could not fetch device max android_id, starting from db", zap.Error(err))
+							} else if id > startID {
 								startID = id
 							}
 							deviceName = fetchDeviceName(&devices[i])
