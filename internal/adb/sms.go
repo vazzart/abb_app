@@ -2,6 +2,7 @@ package adb
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -85,6 +86,7 @@ type Poller struct {
 	interval   time.Duration
 	lastID     int64
 	simInfo    map[string]string
+	compatMode bool // true when device lacks subscription_id column
 	log        *zap.Logger
 	Messages   chan model.Message
 }
@@ -146,12 +148,19 @@ func (p *Poller) Run(ctx context.Context) {
 	}
 }
 
-// smsShellCmd queries SMS inbox. subscription_id is placed before body so that
-// the body parser (which finds content between "body=" and the trailing "date=") works correctly.
+// smsShellCmd queries SMS inbox with subscription_id (Android 5.1+).
+// subscription_id is placed before body so the body parser works correctly.
 const smsShellCmd = "content query --uri content://sms/inbox --projection '_id,subscription_id,address,body,date' --sort 'date DESC'"
+
+// smsShellCmdCompat is a fallback for devices where subscription_id column is missing.
+const smsShellCmdCompat = "content query --uri content://sms/inbox --projection '_id,address,body,date' --sort 'date DESC'"
 
 // simInfoShellCmd queries the SIM card info table.
 const simInfoShellCmd = "content query --uri content://telephony/siminfo --projection '_id,display_name,sim_slot_index'"
+
+// errSQLite is returned by ParseSMSOutput when the ADB output contains a SQLite error,
+// signalling the caller to retry with a compatible query.
+var errSQLite = fmt.Errorf("sqlite error in adb output")
 
 func (p *Poller) poll(ctx context.Context) {
 	if ctx.Err() != nil {
@@ -176,7 +185,11 @@ func (p *Poller) poll(ctx context.Context) {
 		return
 	}
 
-	out, err := device.RunShellCommand(smsShellCmd)
+	cmd := smsShellCmd
+	if p.compatMode {
+		cmd = smsShellCmdCompat
+	}
+	out, err := device.RunShellCommand(cmd)
 	if err != nil {
 		p.log.Error("adb content query failed", zap.Error(err))
 		return
@@ -184,6 +197,11 @@ func (p *Poller) poll(ctx context.Context) {
 
 	msgs, err := ParseSMSOutput(out)
 	if err != nil {
+		if !p.compatMode && errors.Is(err, errSQLite) {
+			p.log.Warn("subscription_id not supported on this device, switching to compat mode")
+			p.compatMode = true
+			return
+		}
 		p.log.Error("parse sms output failed", zap.Error(err))
 		return
 	}
@@ -217,10 +235,14 @@ func (p *Poller) poll(ctx context.Context) {
 
 // ParseSMSOutput parses the raw output of "content query --uri content://sms/inbox".
 // Handles multiline message bodies: body spans until the ", date=<digits>" suffix.
+// Returns errSQLite if the device reports a SQLiteException (e.g. missing column).
 func ParseSMSOutput(raw string) ([]model.Message, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" || strings.HasPrefix(raw, "No result found") {
 		return nil, nil
+	}
+	if strings.Contains(raw, "SQLiteException") || strings.Contains(raw, "Error while accessing provider") {
+		return nil, fmt.Errorf("%w: %.120s", errSQLite, raw)
 	}
 
 	parts := reRowSplit.Split(raw, -1)
