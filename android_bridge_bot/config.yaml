@@ -1,6 +1,6 @@
 name: "Android Bridge Bot"
 description: "Reads SMS from an Android phone via USB/ADB and forwards them to Telegram, Email, or Ntfy."
-version: "1.0.7"
+version: "1.0.8"
 slug: "android_bridge_bot"
 url: "https://github.com/vazzart/abb_app"
 image: "ghcr.io/vazzart/ha-addon-abb-{arch}"

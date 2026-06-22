@@ -99,6 +99,14 @@ func FetchMaxAndroidID(device *gadb.Device) (int64, error) {
 		return 0, fmt.Errorf("adb shell: %w", err)
 	}
 	msgs, err := ParseSMSOutput(out)
+	if errors.Is(err, errSQLite) {
+		// Device doesn't support subscription_id — retry with compat query.
+		out, err = device.RunShellCommand(smsShellCmdCompat)
+		if err != nil {
+			return 0, fmt.Errorf("adb shell compat: %w", err)
+		}
+		msgs, err = ParseSMSOutput(out)
+	}
 	if err != nil {
 		return 0, fmt.Errorf("parse sms: %w", err)
 	}
