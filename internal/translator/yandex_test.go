@@ -114,6 +114,58 @@ func TestTranslate_ContextCancelled(t *testing.T) {
 	}
 }
 
+func TestTranslate_ForcesGeorgianSource(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"translations": []map[string]any{
+				{"text": "Привет, как дела?"},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	tr := translator.NewYandexWithURL(srv.URL, "test-key", "folder1", "ru")
+
+	_, lang, err := tr.Translate(context.Background(), "gamarjoba, rogor xar?")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotBody["sourceLanguageCode"] != "ka" {
+		t.Errorf("sourceLanguageCode = %v, want %q", gotBody["sourceLanguageCode"], "ka")
+	}
+	// detectedLanguageCode wasn't in the response - Translate should fall
+	// back to the source language it forced.
+	if lang != "ka" {
+		t.Errorf("lang = %q, want %q", lang, "ka")
+	}
+}
+
+func TestTranslate_DoesNotForceSourceForOtherText(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"translations": []map[string]any{
+				{"text": "Bonjour", "detectedLanguageCode": "en"},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	tr := translator.NewYandexWithURL(srv.URL, "test-key", "folder1", "ru")
+
+	if _, _, err := tr.Translate(context.Background(), "Your verification code is 483920."); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, ok := gotBody["sourceLanguageCode"]; ok {
+		t.Errorf("sourceLanguageCode should be omitted, got %v", gotBody["sourceLanguageCode"])
+	}
+}
+
 func TestTargetLang(t *testing.T) {
 	tr := translator.NewYandex("key", "folder", "ru")
 	if tr.TargetLang() != "ru" {

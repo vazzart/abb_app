@@ -38,6 +38,7 @@ type translateRequest struct {
 	FolderID           string   `json:"folderId"`
 	Texts              []string `json:"texts"`
 	TargetLanguageCode string   `json:"targetLanguageCode"`
+	SourceLanguageCode string   `json:"sourceLanguageCode,omitempty"`
 }
 
 type translateResponse struct {
@@ -51,11 +52,21 @@ type translateResponse struct {
 // and the detected source language code (e.g. "ka", "en", "ru").
 // Returns ("", targetLang, nil) when the text is already in the target language.
 func (y *Yandex) Translate(ctx context.Context, text string) (translated, detectedLang string, err error) {
-	body, err := json.Marshal(translateRequest{
+	reqBody := translateRequest{
 		FolderID:           y.folderID,
 		Texts:              []string{text},
 		TargetLanguageCode: y.targetLang,
-	})
+	}
+	// Yandex's own language auto-detection reliably misidentifies
+	// latin-transliterated Georgian as Uzbek/Turkish/etc (even with
+	// hints), so force it explicitly when the heuristic recognizes it.
+	forcedSource := ""
+	if LooksLikeGeorgianLatin(text) {
+		forcedSource = "ka"
+		reqBody.SourceLanguageCode = forcedSource
+	}
+
+	body, err := json.Marshal(reqBody)
 	if err != nil {
 		return "", "", fmt.Errorf("marshal: %w", err)
 	}
@@ -88,7 +99,13 @@ func (y *Yandex) Translate(ctx context.Context, text string) (translated, detect
 	}
 
 	t := result.Translations[0]
-	return t.Text, t.DetectedLanguageCode, nil
+	lang := t.DetectedLanguageCode
+	if lang == "" && forcedSource != "" {
+		// Yandex omits detectedLanguageCode when sourceLanguageCode was
+		// given explicitly in the request.
+		lang = forcedSource
+	}
+	return t.Text, lang, nil
 }
 
 // TargetLang returns the configured target language code.
