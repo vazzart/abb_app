@@ -214,15 +214,20 @@ func (w *Worker) setup(ctx context.Context) error {
 	return nil
 }
 
+// waitSIM polls AT+CPIN? quietly (the SIM may still be initialising after power-up);
+// the caller logs the final error once.
 func (w *Worker) waitSIM(ctx context.Context) error {
 	deadline := w.now().Add(simReadyWait)
 	for {
-		lines, err := w.cmd(ctx, "AT+CPIN?")
+		lines, err := w.at.Command(ctx, "AT+CPIN?", commandTimeout)
 		if err == nil && len(lines) > 0 && strings.Contains(lines[0], "READY") {
 			return nil
 		}
 		if w.now().After(deadline) {
-			return fmt.Errorf("SIM not ready: %v %v", lines, err)
+			if err == nil {
+				err = fmt.Errorf("%s", strings.Join(lines, "; "))
+			}
+			return fmt.Errorf("SIM not ready: %w", err)
 		}
 		select {
 		case <-ctx.Done():
