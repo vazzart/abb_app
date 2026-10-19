@@ -24,6 +24,33 @@ func TestLooksLikeGeorgianLatin(t *testing.T) {
 			want: false,
 		},
 		{
+			name: "georgian balance notice",
+			text: "Tqveni nomeri 555123456: gadaixade 5 lari 25-mde, gmadlobt",
+			want: true,
+		},
+		{
+			// Real SMS received on a SIMCOM modem: acronyms (MTS, SMS, VPN) and the
+			// URL used to push the score over the threshold.
+			name: "english carrier sms with acronyms and url",
+			text: "MTS: Welcome to the MTS network! For the number 7747***7094 Internet and SMS are blocked for 24 hours. To unblock it, turn off Wi-Fi, VPN and pass verification using http://visit.mts.ru or by phone +79150102243",
+			want: false,
+		},
+		{
+			name: "english with domain only",
+			text: "Top up via magti.ge or www.cellfie.ge, SMS 1234 for help",
+			want: false,
+		},
+		{
+			name: "english bank otp",
+			text: "TBC Bank: transaction GEL 45.20 at SPAR. Available balance GEL 1203.55. Code 8841",
+			want: false,
+		},
+		{
+			name: "german sentence with consonant clusters",
+			text: "Sehr geehrter Kunde, Ihr Vertrag wurde erfolgreich verlaengert. Freundliche Gruesse",
+			want: false,
+		},
+		{
 			name: "russian cyrillic",
 			text: "Ваш баланс пополнен на 10 лари, спасибо за использование наших услуг.",
 			want: false,
