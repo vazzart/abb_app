@@ -46,6 +46,7 @@ adb:
   poll_interval: "$(opt .adb_poll_interval "30s")"
   watch_interval: "$(opt .adb_watch_interval "5s")"
   device_serial: "$(opt .adb_device_serial "")"
+  sim_country_code: "$(opt .adb_sim_country_code "")"
 
 modem:
   enabled: $(opt_bool .modem_enabled)

@@ -172,3 +172,33 @@ func TestTargetLang(t *testing.T) {
 		t.Errorf("TargetLang() = %q, want %q", tr.TargetLang(), "ru")
 	}
 }
+
+func TestTranslateFor_GeorgianRecipientForcesSource(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"translations": []map[string]any{{"text": "Оплатите абонентскую плату"}},
+		})
+	}))
+	defer srv.Close()
+
+	tr := translator.NewYandexWithURL(srv.URL, "test-key", "folder1", "ru")
+	text := "gadaixadet abonentis gadasakhadi 15 lari 25 oqtombramde"
+
+	if _, _, err := tr.TranslateFor(context.Background(), text, "+995555123456"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotBody["sourceLanguageCode"] != "ka" {
+		t.Errorf("sourceLanguageCode = %v, want ka for a Georgian recipient", gotBody["sourceLanguageCode"])
+	}
+
+	gotBody = nil
+	if _, _, err := tr.TranslateFor(context.Background(), text, "+77474117094"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, ok := gotBody["sourceLanguageCode"]; ok {
+		t.Errorf("sourceLanguageCode should be omitted for a foreign recipient, got %v", gotBody["sourceLanguageCode"])
+	}
+}

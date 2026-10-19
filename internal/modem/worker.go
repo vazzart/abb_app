@@ -394,6 +394,7 @@ func (w *Worker) buildMessage(g *group, complete bool) (model.Message, error) {
 		DeviceName: w.info.Name,
 		SimName:    w.info.SimName(),
 		Source:     "modem",
+		Recipient:  w.info.Number,
 		ReceivedAt: received,
 	}, nil
 }

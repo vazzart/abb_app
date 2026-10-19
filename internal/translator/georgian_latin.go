@@ -55,12 +55,38 @@ var (
 	urlRe = regexp.MustCompile(`(?i)\b(?:https?://|www\.)\S+|\S+@\S+|\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}\b\S*`)
 )
 
-// LooksLikeGeorgianLatin scores text against patterns typical of Georgian
+// georgianRecipientBonus is added to the score when the SMS was received on a
+// Georgian (+995) number: Georgian text is far more likely there, but it is a
+// prior, not a filter - Georgian SMS also reach foreign numbers.
+const georgianRecipientBonus = 2.0
+
+// IsGeorgianNumber reports whether a phone number or country code is Georgian
+// (+995), e.g. "+995555123456", "995555123456" or "+995".
+func IsGeorgianNumber(number string) bool {
+	digits := strings.Map(func(r rune) rune {
+		if r >= '0' && r <= '9' {
+			return r
+		}
+		return -1
+	}, number)
+	return strings.HasPrefix(digits, "995")
+}
+
+// LooksLikeGeorgianLatin is LooksLikeGeorgianLatinFor with an unknown recipient.
+func LooksLikeGeorgianLatin(text string) bool {
+	return LooksLikeGeorgianLatinFor(text, "")
+}
+
+// LooksLikeGeorgianLatinFor scores text against patterns typical of Georgian
 // written with Latin letters. It's a heuristic tuned against real
 // carrier/service SMS text, not a real language model - it exists because
 // Yandex Translate's own language auto-detection reliably misidentifies
 // this text as Uzbek/Turkish/etc, even with language hints.
-func LooksLikeGeorgianLatin(text string) bool {
+//
+// recipient is the number (or country code) the SMS was received on; a
+// Georgian number adds georgianRecipientBonus. It never overrides the
+// English-text guard: Georgian banks often send SMS in English.
+func LooksLikeGeorgianLatinFor(text, recipient string) bool {
 	text = urlRe.ReplaceAllString(text, " ")
 	words := wordRe.FindAllString(text, -1)
 	if len(words) == 0 {
@@ -94,6 +120,9 @@ func LooksLikeGeorgianLatin(text string) bool {
 	}
 
 	score := 0.0
+	if IsGeorgianNumber(recipient) {
+		score += georgianRecipientBonus
+	}
 	dictHits := 0
 	weighed := 0 // words that took part in the weak-signal scoring
 	for _, w := range words {

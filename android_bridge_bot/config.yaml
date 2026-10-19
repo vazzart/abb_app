@@ -1,6 +1,6 @@
 name: "Android Bridge Bot"
 description: "Reads SMS from an Android phone via USB/ADB and from SIMCOM A7670E USB modems, and forwards them to Telegram, Email, or Ntfy."
-version: "1.2.4"
+version: "1.2.5"
 slug: "android_bridge_bot"
 url: "https://github.com/vazzart/abb_app"
 image: "ghcr.io/vazzart/ha-addon-abb-{arch}"
@@ -32,6 +32,7 @@ options:
   channels:
     - telegram
   adb_device_serial: ""
+  adb_sim_country_code: ""
   adb_poll_interval: "30s"
   adb_watch_interval: "5s"
   modem_enabled: false
@@ -70,6 +71,7 @@ schema:
   channels:
     - str
   adb_device_serial: str?
+  adb_sim_country_code: str?
   adb_poll_interval: str
   adb_watch_interval: str
   modem_enabled: bool

@@ -11,6 +11,7 @@ type Message struct {
 	DeviceName     string
 	SimName        string
 	Source         string // "adb" or "modem"; empty is treated as "adb"
+	Recipient      string // number or country code the SMS was received on (translation hint; not stored)
 	ReceivedAt     time.Time
 }
 

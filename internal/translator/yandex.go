@@ -52,6 +52,12 @@ type translateResponse struct {
 // and the detected source language code (e.g. "ka", "en", "ru").
 // Returns ("", targetLang, nil) when the text is already in the target language.
 func (y *Yandex) Translate(ctx context.Context, text string) (translated, detectedLang string, err error) {
+	return y.TranslateFor(ctx, text, "")
+}
+
+// TranslateFor is Translate with the number (or country code) the SMS was
+// received on, used as a hint for detecting latin-transliterated Georgian.
+func (y *Yandex) TranslateFor(ctx context.Context, text, recipient string) (translated, detectedLang string, err error) {
 	reqBody := translateRequest{
 		FolderID:           y.folderID,
 		Texts:              []string{text},
@@ -61,7 +67,7 @@ func (y *Yandex) Translate(ctx context.Context, text string) (translated, detect
 	// latin-transliterated Georgian as Uzbek/Turkish/etc (even with
 	// hints), so force it explicitly when the heuristic recognizes it.
 	forcedSource := ""
-	if LooksLikeGeorgianLatin(text) {
+	if LooksLikeGeorgianLatinFor(text, recipient) {
 		forcedSource = "ka"
 		reqBody.SourceLanguageCode = forcedSource
 	}

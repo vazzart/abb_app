@@ -158,6 +158,9 @@ func TestReadAll_DecodesAndDeletes(t *testing.T) {
 		if m.Source != "modem" || m.DeviceName != "Magti" || m.SimName != "+995555123456" {
 			t.Errorf("metadata = %+v", m)
 		}
+		if m.Recipient != "+995555123456" {
+			t.Errorf("recipient = %q, want the modem's number (translation hint)", m.Recipient)
+		}
 		if m.ReceivedAt.Location() != time.Local {
 			t.Errorf("received_at zone = %v, want local (SCTS zone cannot be stored)", m.ReceivedAt.Location())
 		}

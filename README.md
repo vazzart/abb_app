@@ -76,6 +76,7 @@ adb:
   poll_interval: 30s        # how often to poll SMS inbox
   watch_interval: 5s        # how often to probe for device connect/disconnect
   device_serial: ""         # empty = use first available device
+  sim_country_code: ""      # phone SIM calling code, e.g. "+995"; a translation hint (see below)
 
 modem:
   enabled: false            # read SMS from SIMCOM A7670E USB modems
@@ -490,6 +491,14 @@ Each modem is a separate SMS source; any number of modems can be plugged in, tog
 3. Enable `modem.enabled` (add-on option `modem_enabled`). On connect, the log and a Telegram message show the modem's IMEI and number. Copy the IMEI or ICCID into `labels` to give the modem a name.
 
 How it works: the modem is switched to PDU mode with `AT+CNMI=2,1` so every new SMS raises `+CMTI`; `abb` then reads all stored SMS (`AT+CMGL=4`), reassembles multi-part messages, saves them to SQLite and only then deletes them from the modem (`AT+CMGD`). If saving fails, the SMS stays on the modem and is retried. Parts of a long SMS that never completes are delivered after 10 minutes, marked with `[…]`.
+
+---
+
+## Georgian in Latin letters
+
+Georgian carriers often send SMS transliterated into Latin letters (GSM 7-bit has no Georgian alphabet), and Yandex's auto-detection mistakes such text for Uzbek or Turkish. A heuristic (`internal/translator/georgian_latin.go`) recognises it from Georgian words, suffixes and letter clusters and then forces `ka` as the source language.
+
+The number the SMS was received on is a strong hint: for a Georgian (`+995`) number the heuristic needs less evidence. It is a bonus, not a filter: clear Georgian text is still recognised on other numbers, and English text (many Georgian banks write in English) is never treated as Georgian. Modems use their own SIM number; for the ADB phone set `adb.sim_country_code` (add-on option `adb_sim_country_code`), e.g. `+995`.
 
 ---
 

@@ -21,13 +21,13 @@ import (
 	"abb/internal/db"
 	"abb/internal/dispatcher"
 	"abb/internal/metrics"
-	"abb/internal/modem"
 	"abb/internal/model"
+	"abb/internal/modem"
 	"abb/internal/sender"
 	"abb/internal/translator"
 )
 
-const version = "1.2.4"
+const version = "1.2.5"
 
 func main() {
 	cfgPath := "config.yaml"
@@ -167,7 +167,7 @@ func main() {
 				pollerCtx, pollerCancel = context.WithCancel(ctx)
 				poller := adb.NewPoller(adbClient, event.Serial, deviceName, cfg.ADB.PollInterval, startID, simInfo, log)
 				go poller.Run(pollerCtx)
-				go processMessages(pollerCtx, poller, database, cfg.Channels, disp, tr, log)
+				go processMessages(pollerCtx, poller, cfg.ADB.SimCountryCode, database, cfg.Channels, disp, tr, log)
 
 			case adb.Disconnected:
 				log.Warn("device disconnected, stopping poller")
@@ -235,6 +235,7 @@ func buildSenders(cfg *config.Config, log *zap.Logger) map[string]sender.Sender 
 func processMessages(
 	ctx context.Context,
 	poller *adb.Poller,
+	simCountryCode string,
 	database *db.DB,
 	channels []string,
 	disp *dispatcher.Dispatcher,
@@ -247,6 +248,7 @@ func processMessages(
 			return
 		case msg := <-poller.Messages:
 			msg.Source = "adb"
+			msg.Recipient = simCountryCode
 			_ = saveAndEnqueue(ctx, msg, database, channels, disp, tr, log)
 		}
 	}
@@ -275,7 +277,7 @@ func saveAndEnqueue(
 	metrics.SMSReceived.Inc()
 
 	if tr != nil {
-		translated, lang, err := tr.Translate(ctx, msg.Body)
+		translated, lang, err := tr.TranslateFor(ctx, msg.Body, msg.Recipient)
 		if err != nil {
 			log.Warn("translate failed", zap.Error(err))
 		} else if lang != tr.TargetLang() {

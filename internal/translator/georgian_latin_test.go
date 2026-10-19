@@ -75,3 +75,49 @@ func TestLooksLikeGeorgianLatin(t *testing.T) {
 		})
 	}
 }
+
+func TestLooksLikeGeorgianLatinFor_RecipientHint(t *testing.T) {
+	// No dictionary words, only weak signals (kh, mbr): too little on its own.
+	weak := "gadaixadet abonentis gadasakhadi 15 lari 25 oqtombramde"
+	cellfie := `Momsaxureba "Nomris shenarchuneba" avtomaturad gagrzeldeba xval. Tu gsurs rom ganaxldes - iqonie balansze 0.1 lari`
+	mts := "MTS: Welcome to the MTS network! For the number 7747***7094 Internet and SMS are blocked for 24 hours. To unblock it, turn off Wi-Fi, VPN and pass verification using http://visit.mts.ru or by phone +79150102243"
+	bank := "TBC Bank: transaction GEL 45.20 at SPAR. Available balance GEL 1203.55. Code 8841"
+
+	cases := []struct {
+		name      string
+		text      string
+		recipient string
+		want      bool
+	}{
+		{"weak georgian, unknown recipient", weak, "", false},
+		{"weak georgian, foreign number", weak, "+77474117094", false},
+		{"weak georgian, georgian number", weak, "+995555123456", true},
+		{"weak georgian, adb country code", weak, "+995", true},
+		{"clear georgian, foreign number", cellfie, "+77474117094", true},
+		{"english carrier sms, georgian number", mts, "+995555123456", false},
+		{"english bank sms, georgian number", bank, "+995555123456", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := LooksLikeGeorgianLatinFor(tc.text, tc.recipient); got != tc.want {
+				t.Errorf("LooksLikeGeorgianLatinFor(%q, %q) = %v, want %v", tc.text, tc.recipient, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestIsGeorgianNumber(t *testing.T) {
+	for number, want := range map[string]bool{
+		"+995555123456": true,
+		"995555123456":  true,
+		"+995":          true,
+		"+995 555 12":   true,
+		"+77474117094":  false,
+		"555123456":     false,
+		"":              false,
+	} {
+		if got := IsGeorgianNumber(number); got != want {
+			t.Errorf("IsGeorgianNumber(%q) = %v, want %v", number, got, want)
+		}
+	}
+}

@@ -23,6 +23,9 @@ configuration:
   adb_device_serial:
     name: Android Device Serial
     description: ADB serial number (leave empty to use first detected device)
+  adb_sim_country_code:
+    name: Phone SIM Country Code
+    description: "Calling code of the phone's SIM, e.g. +995. Helps recognise Georgian written in Latin letters (modems use their own number)"
   adb_poll_interval:
     name: SMS Poll Interval
     description: "How often to check for new SMS (e.g. 30s, 1m)"

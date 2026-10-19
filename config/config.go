@@ -31,6 +31,9 @@ type ADBConfig struct {
 	PollInterval  time.Duration
 	WatchInterval time.Duration
 	DeviceSerial  string
+	// SimCountryCode is the calling code of the phone's SIM (e.g. "+995"),
+	// used as a translation hint since ADB does not expose the SIM number.
+	SimCountryCode string
 }
 
 // ModemConfig configures USB GSM modems (e.g. SIMCOM A7670E) read via AT commands.
@@ -148,11 +151,12 @@ func Load(path string) (*Config, error) {
 
 	return &Config{
 		ADB: ADBConfig{
-			ServerHost:    v.GetString("adb.server_host"),
-			ServerPort:    v.GetInt("adb.server_port"),
-			PollInterval:  v.GetDuration("adb.poll_interval"),
-			WatchInterval: v.GetDuration("adb.watch_interval"),
-			DeviceSerial:  v.GetString("adb.device_serial"),
+			ServerHost:     v.GetString("adb.server_host"),
+			ServerPort:     v.GetInt("adb.server_port"),
+			PollInterval:   v.GetDuration("adb.poll_interval"),
+			WatchInterval:  v.GetDuration("adb.watch_interval"),
+			DeviceSerial:   v.GetString("adb.device_serial"),
+			SimCountryCode: v.GetString("adb.sim_country_code"),
 		},
 		Modem: ModemConfig{
 			Enabled:         v.GetBool("modem.enabled"),
