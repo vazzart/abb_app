@@ -192,6 +192,8 @@ func (w *Worker) setup(ctx context.Context) error {
 	if lines, err := w.cmd(ctx, "AT+CNUM"); err == nil {
 		w.info.Number = quotedField(lines, "+CNUM:", 1)
 	}
+	// Report the operator as a name ("Tele2") rather than the numeric MCC/MNC ("25020").
+	w.cmd(ctx, "AT+COPS=3,0")
 	if lines, err := w.cmd(ctx, "AT+COPS?"); err == nil {
 		w.info.Operator = quotedField(lines, "+COPS:", 0)
 	}
