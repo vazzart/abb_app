@@ -356,3 +356,25 @@ func TestGetMaxAndroidID_IgnoresModemMessages(t *testing.T) {
 		t.Fatalf("max android_id = %d, want 42 (modem rows ignored)", got)
 	}
 }
+
+// v1.2.0 stored modem SMS times in the SCTS fixed zone; the driver writes
+// "… +0300 SCTS" and cannot parse it back. Such rows must still be readable.
+func TestGetMessageByID_SCTSZoneTime(t *testing.T) {
+	d := openTestDB(t)
+	ctx := context.Background()
+
+	msg := sampleMsg("modem:861815081797077:0011223344556677")
+	msg.ReceivedAt = time.Date(2026, 10, 19, 13, 56, 1, 0, time.FixedZone("SCTS", 3*3600))
+	id, _, err := d.SaveMessage(ctx, msg)
+	if err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	got, err := d.GetMessageByID(ctx, id)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if !got.ReceivedAt.Equal(msg.ReceivedAt) {
+		t.Fatalf("received_at = %v, want %v", got.ReceivedAt, msg.ReceivedAt)
+	}
+}

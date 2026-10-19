@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"time"
 
 	"abb/internal/model"
 )
@@ -49,11 +50,31 @@ func (d *DB) CountMessages(ctx context.Context) (int, error) {
 // GetMessageByID returns a message by its DB id, including device/SIM name and translation.
 func (d *DB) GetMessageByID(ctx context.Context, id int64) (model.Message, error) {
 	var msg model.Message
+	var received any
 	err := d.conn.QueryRowContext(ctx,
 		`SELECT android_id, address, body, COALESCE(device_name, ''), COALESCE(sim_name, ''),
 		        COALESCE(source, ''), COALESCE(translation, ''), received_at
 		 FROM messages WHERE id = ?`, id,
 	).Scan(&msg.AndroidID, &msg.Address, &msg.Body, &msg.DeviceName, &msg.SimName,
-		&msg.Source, &msg.Translation, &msg.ReceivedAt)
-	return msg, err
+		&msg.Source, &msg.Translation, &received)
+	if err != nil {
+		return msg, err
+	}
+	msg.ReceivedAt = scanTime(received)
+	return msg, nil
+}
+
+// scanTime accepts received_at as the driver returns it: a time.Time when it
+// could parse the stored text, otherwise the raw string. Rows written by v1.2.0
+// hold "2006-01-02 15:04:05 +0300 SCTS", which the driver cannot parse.
+func scanTime(v any) time.Time {
+	switch t := v.(type) {
+	case time.Time:
+		return t
+	case string:
+		return parseTime(t)
+	case []byte:
+		return parseTime(string(t))
+	}
+	return time.Time{}
 }

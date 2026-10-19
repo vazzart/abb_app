@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"abb/internal/model"
@@ -175,6 +176,13 @@ func parseTime(s string) time.Time {
 		"2006-01-02T15:04:05",
 	} {
 		if t, err := time.Parse(layout, s); err == nil {
+			return t
+		}
+	}
+	// t.String() output, e.g. "2026-10-19 13:56:01 +0300 SCTS": drop the zone
+	// name (Go only parses well-known abbreviations) and keep the numeric offset.
+	if i := strings.LastIndexByte(s, ' '); i > 0 {
+		if t, err := time.Parse("2006-01-02 15:04:05.999999999 -0700", s[:i]); err == nil {
 			return t
 		}
 	}

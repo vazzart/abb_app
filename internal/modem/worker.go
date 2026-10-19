@@ -379,8 +379,11 @@ func (w *Worker) buildMessage(g *group, complete bool) (model.Message, error) {
 
 	first := tpdus[0]
 	sender := first.OA.Number()
-	received := first.SCTS.Time
-	if received.IsZero() {
+	// SCTS carries a fixed zone named "SCTS"; the SQLite driver stores times as
+	// t.String() and cannot parse that zone name back, so convert to local time
+	// (as the ADB poller does).
+	received := first.SCTS.Time.In(time.Local)
+	if first.SCTS.Time.IsZero() {
 		received = w.now()
 	}
 
