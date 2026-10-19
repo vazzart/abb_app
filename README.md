@@ -1,12 +1,13 @@
 # abb — Android Bridge Bot
 
-Reads SMS from an Android phone connected via USB and forwards them to Telegram, Ntfy, and/or Email. All messages are buffered in a local SQLite database with automatic retry on failure.
+Reads SMS from an Android phone connected via USB (ADB) and from any number of SIMCOM A7670E USB modems, and forwards them to Telegram, Ntfy, and/or Email. All messages are buffered in a local SQLite database with automatic retry on failure.
 
 ---
 
 ## Features
 
 - Reads inbox SMS via ADB (`content://sms/inbox`) — no root required
+- Reads SMS from multiple SIMCOM A7670E USB modems via AT commands (PDU mode, Cyrillic/Georgian, long SMS), with hot-plug
 - Saves every message to SQLite before sending (no data loss on crash)
 - Delivers to **Telegram**, **Ntfy**, and/or **Email** (any combination)
 - Optional SOCKS5 proxy for Telegram
@@ -75,6 +76,17 @@ adb:
   poll_interval: 30s        # how often to poll SMS inbox
   watch_interval: 5s        # how often to probe for device connect/disconnect
   device_serial: ""         # empty = use first available device
+
+modem:
+  enabled: false            # read SMS from SIMCOM A7670E USB modems
+  usb_ids: ["1e0e:9011", "1e0e:9001"]
+  watch_interval: 10s       # how often to look for plugged/unplugged modems
+  poll_interval: 30s        # fallback re-read; new SMS normally arrive instantly via +CMTI
+  storage: "SM"             # SM = SIM card, ME = modem memory
+  delete_after_read: true   # delete SMS from the modem after it is saved to the DB
+  labels:                   # names for the "To:" line, matched by IMEI or ICCID
+    - { imei: "861234567890123", name: "Beeline" }
+    - { iccid: "8995012345678901234", name: "Magti" }
 
 db:
   path: "./abb.db"
@@ -459,12 +471,25 @@ abb_app/
 │   ├── dispatcher/          # fan-out delivery + exponential backoff retry worker
 │   ├── metrics/             # Prometheus counters + HTTP server
 │   ├── model/               # shared types: Message, OutboxItem, RetryItem
+│   ├── modem/               # USB modem discovery, AT client, PDU SMS reader (A7670E)
 │   └── sender/              # Sender interface, TelegramSender, NtfySender, EmailSender
 ├── config/config.go         # viper config loader + all config structs
 ├── deploy/abb.service       # systemd unit file
 ├── config.yaml              # runtime configuration
 └── ARCHITECTURE.md          # design document and test-case catalogue
 ```
+
+---
+
+## SIMCOM A7670E USB modems
+
+Each modem is a separate SMS source; any number of modems can be plugged in, together with an ADB phone.
+
+1. Plug the modem in and check that Linux created serial ports: `ls /dev/ttyUSB*` (on HA OS: Settings → System → Hardware → All hardware, look for `ttyUSB*` with vendor `1e0e`). An A7670E in its default RNDIS mode is `1e0e:9011` and exposes several `ttyUSB` ports; `abb` probes them and picks the one that answers `AT`.
+2. If no `ttyUSB` appears, the kernel did not bind the `option` driver: `echo 1e0e 9011 > /sys/bus/usb-serial/drivers/option1/new_id` (not persistent).
+3. Enable `modem.enabled` (add-on option `modem_enabled`). On connect, the log and a Telegram message show the modem's IMEI and number. Copy the IMEI or ICCID into `labels` to give the modem a name.
+
+How it works: the modem is switched to PDU mode with `AT+CNMI=2,1` so every new SMS raises `+CMTI`; `abb` then reads all stored SMS (`AT+CMGL=4`), reassembles multi-part messages, saves them to SQLite and only then deletes them from the modem (`AT+CMGD`). If saving fails, the SMS stays on the modem and is retried. Parts of a long SMS that never completes are delivered after 10 minutes, marked with `[…]`.
 
 ---
 
@@ -481,4 +506,7 @@ abb_app/
 | High memory / large log file | Log rotation not configured | Set `log.file` and tune `max_size_mb` / `max_age_days` |
 | `ntfy: server returned 401` | Wrong token or user has no publish access | Re-check token; run `ntfy access abb_publisher sms write` |
 | `ntfy: server returned 403` | Topic access denied | Check `auth-default-access` in `server.yml` and user permissions |
+| `no port of ... answers AT` | Modem still booting or ports busy | Wait; `abb` retries every `modem.watch_interval`. Make sure ModemManager is not holding the port |
+| `SIM not ready` | No SIM, PIN-locked SIM | Insert SIM / disable the PIN on a phone |
+| Modem not detected at all | No `ttyUSB` ports | See step 2 of the A7670E section |
 | No Ntfy push on phone | Wrong topic name or server URL | Verify topic matches in both `config.yaml` and the Ntfy app subscription |

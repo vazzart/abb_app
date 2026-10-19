@@ -309,3 +309,50 @@ func TestGetPendingOutbox(t *testing.T) {
 		}
 	}
 }
+
+// SimName and Source survive the round trip so the dispatcher can show "To: device / SIM".
+func TestSaveMessage_SimNameAndSourceStored(t *testing.T) {
+	d := openTestDB(t)
+	ctx := context.Background()
+
+	msg := sampleMsg("modem:861234567890123:abcdef")
+	msg.DeviceName = "Magti"
+	msg.SimName = "+995555123456"
+	msg.Source = "modem"
+	id, _, err := d.SaveMessage(ctx, msg)
+	if err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	got, err := d.GetMessageByID(ctx, id)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.DeviceName != "Magti" || got.SimName != "+995555123456" || got.Source != "modem" {
+		t.Fatalf("got %+v", got)
+	}
+}
+
+// Modem keys are not numeric and must not move the ADB cursor.
+func TestGetMaxAndroidID_IgnoresModemMessages(t *testing.T) {
+	d := openTestDB(t)
+	ctx := context.Background()
+
+	adbMsg := sampleMsg("42")
+	if _, _, err := d.SaveMessage(ctx, adbMsg); err != nil {
+		t.Fatal(err)
+	}
+	modemMsg := sampleMsg("9999")
+	modemMsg.Source = "modem"
+	if _, _, err := d.SaveMessage(ctx, modemMsg); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := d.GetMaxAndroidID(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != 42 {
+		t.Fatalf("max android_id = %d, want 42 (modem rows ignored)", got)
+	}
+}

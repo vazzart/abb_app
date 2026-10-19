@@ -10,6 +10,7 @@ type Message struct {
 	Translation    string
 	DeviceName     string
 	SimName        string
+	Source         string // "adb" or "modem"; empty is treated as "adb"
 	ReceivedAt     time.Time
 }
 

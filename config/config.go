@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/spf13/viper"
@@ -8,6 +9,7 @@ import (
 
 type Config struct {
 	ADB        ADBConfig
+	Modem      ModemConfig
 	DB         DBConfig
 	Telegram   TelegramConfig
 	Email      EmailConfig
@@ -29,6 +31,24 @@ type ADBConfig struct {
 	PollInterval  time.Duration
 	WatchInterval time.Duration
 	DeviceSerial  string
+}
+
+// ModemConfig configures USB GSM modems (e.g. SIMCOM A7670E) read via AT commands.
+type ModemConfig struct {
+	Enabled         bool
+	USBIDs          []string // "vid:pid" pairs, lowercase hex
+	WatchInterval   time.Duration
+	PollInterval    time.Duration
+	Storage         string // SMS storage: "SM" (SIM) or "ME" (modem memory)
+	DeleteAfterRead bool
+	Labels          []ModemLabel
+}
+
+// ModemLabel names a modem in notifications. Matched by IMEI or ICCID.
+type ModemLabel struct {
+	IMEI  string `mapstructure:"imei"`
+	ICCID string `mapstructure:"iccid"`
+	Name  string `mapstructure:"name"`
 }
 
 type TelegramConfig struct {
@@ -95,6 +115,12 @@ func Load(path string) (*Config, error) {
 	v.SetDefault("adb.server_port", 5037)
 	v.SetDefault("adb.poll_interval", "30s")
 	v.SetDefault("adb.watch_interval", "5s")
+	v.SetDefault("modem.enabled", false)
+	v.SetDefault("modem.usb_ids", []string{"1e0e:9011", "1e0e:9001"})
+	v.SetDefault("modem.watch_interval", "10s")
+	v.SetDefault("modem.poll_interval", "30s")
+	v.SetDefault("modem.storage", "SM")
+	v.SetDefault("modem.delete_after_read", true)
 	v.SetDefault("db.path", "./abb.db")
 	v.SetDefault("dispatcher.max_attempts", 5)
 	v.SetDefault("dispatcher.retry_base_interval", "1m")
@@ -115,6 +141,11 @@ func Load(path string) (*Config, error) {
 		return nil, err
 	}
 
+	var labels []ModemLabel
+	if err := v.UnmarshalKey("modem.labels", &labels); err != nil {
+		return nil, fmt.Errorf("modem.labels: %w", err)
+	}
+
 	return &Config{
 		ADB: ADBConfig{
 			ServerHost:    v.GetString("adb.server_host"),
@@ -122,6 +153,15 @@ func Load(path string) (*Config, error) {
 			PollInterval:  v.GetDuration("adb.poll_interval"),
 			WatchInterval: v.GetDuration("adb.watch_interval"),
 			DeviceSerial:  v.GetString("adb.device_serial"),
+		},
+		Modem: ModemConfig{
+			Enabled:         v.GetBool("modem.enabled"),
+			USBIDs:          v.GetStringSlice("modem.usb_ids"),
+			WatchInterval:   v.GetDuration("modem.watch_interval"),
+			PollInterval:    v.GetDuration("modem.poll_interval"),
+			Storage:         v.GetString("modem.storage"),
+			DeleteAfterRead: v.GetBool("modem.delete_after_read"),
+			Labels:          labels,
 		},
 		DB: DBConfig{
 			Path: v.GetString("db.path"),

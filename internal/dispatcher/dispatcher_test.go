@@ -3,6 +3,7 @@ package dispatcher_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -473,5 +474,29 @@ func TestSaveAndEnqueue_ChannelNotInConfig(t *testing.T) {
 	}
 	if len(tgMock.Calls()) != 1 {
 		t.Errorf("telegram: expected 1 call, got %d", len(tgMock.Calls()))
+	}
+}
+
+// Concurrent DispatchOnce calls (one per incoming SMS) must not send an item twice.
+func TestDispatchOnce_ConcurrentCallsNoDuplicates(t *testing.T) {
+	database := openTestDB(t)
+	for i := range 5 {
+		seedMessage(t, database, fmt.Sprintf("c%d", i), "+79001234567", "body", "telegram")
+	}
+	mock := newMock("telegram", nil)
+	disp := newDispatcher(database, map[string]sender.Sender{"telegram": mock}, time.Millisecond)
+
+	var wg sync.WaitGroup
+	for range 8 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			disp.DispatchOnce(context.Background())
+		}()
+	}
+	wg.Wait()
+
+	if n := len(mock.Calls()); n != 5 {
+		t.Fatalf("sent %d times, want 5", n)
 	}
 }

@@ -21,12 +21,13 @@ import (
 	"abb/internal/db"
 	"abb/internal/dispatcher"
 	"abb/internal/metrics"
+	"abb/internal/modem"
 	"abb/internal/model"
 	"abb/internal/sender"
 	"abb/internal/translator"
 )
 
-const version = "1.1.3"
+const version = "1.2.0"
 
 func main() {
 	cfgPath := "config.yaml"
@@ -90,6 +91,20 @@ func main() {
 
 	if pending, err := database.CountOutbox(ctx, "pending"); err == nil && pending > 0 {
 		log.Info("pending outbox items from previous run", zap.Int("count", pending))
+	}
+
+	if cfg.Modem.Enabled {
+		mgr := modem.NewManager(cfg.Modem, func(ctx context.Context, msg model.Message) error {
+			return saveAndEnqueue(ctx, msg, database, cfg.Channels, disp, tr, log)
+		}, log)
+		mgr.OnConnect = func(info modem.Info) {
+			notify(ctx, senders, fmt.Sprintf("Modem connected: %s\nNumber: %s\nIMEI: %s",
+				info.Name, orDash(info.SimName()), orDash(info.IMEI)), log)
+		}
+		mgr.OnDisconnect = func(info modem.Info, err error) {
+			notify(ctx, senders, fmt.Sprintf("Modem disconnected: %s (%s)", info.Name, orDash(info.SimName())), log)
+		}
+		go mgr.Run(ctx)
 	}
 
 	watcher := adb.NewWatcher(adbClient, cfg.ADB.DeviceSerial, cfg.ADB.WatchInterval, log)
@@ -231,11 +246,14 @@ func processMessages(
 		case <-ctx.Done():
 			return
 		case msg := <-poller.Messages:
-			saveAndEnqueue(ctx, msg, database, channels, disp, tr, log)
+			msg.Source = "adb"
+			_ = saveAndEnqueue(ctx, msg, database, channels, disp, tr, log)
 		}
 	}
 }
 
+// saveAndEnqueue stores msg and creates outbox entries. It returns an error only
+// when the message could not be saved, so the source must keep it for a retry.
 func saveAndEnqueue(
 	ctx context.Context,
 	msg model.Message,
@@ -244,14 +262,14 @@ func saveAndEnqueue(
 	disp *dispatcher.Dispatcher,
 	tr *translator.Yandex,
 	log *zap.Logger,
-) {
+) error {
 	id, isNew, err := database.SaveMessage(ctx, msg)
 	if err != nil {
 		log.Error("save message", zap.Error(err), zap.String("android_id", msg.AndroidID))
-		return
+		return err
 	}
 	if !isNew {
-		return
+		return nil
 	}
 
 	metrics.SMSReceived.Inc()
@@ -284,6 +302,7 @@ func saveAndEnqueue(
 		msg.Address,
 		msg.Body,
 	)
+	return nil
 }
 
 func buildTranslator(cfg *config.Config, log *zap.Logger) *translator.Yandex {
@@ -331,10 +350,22 @@ func sendStartupNotification(ctx context.Context, adbClient *gadb.Client, sender
 		body += "\n" + strings.Join(lines, "\n")
 	}
 
+	notify(ctx, senders, body, log)
+}
+
+// notify sends a service message from "ABB" directly to every sender, bypassing the outbox.
+func notify(ctx context.Context, senders map[string]sender.Sender, body string, log *zap.Logger) {
 	msg := model.Message{Address: "ABB", Body: body, ReceivedAt: time.Now()}
 	for name, s := range senders {
 		if err := s.Send(ctx, msg); err != nil {
-			log.Warn("startup notification send failed", zap.String("channel", name), zap.Error(err))
+			log.Warn("notification send failed", zap.String("channel", name), zap.Error(err))
 		}
 	}
+}
+
+func orDash(s string) string {
+	if s == "" {
+		return "-"
+	}
+	return s
 }

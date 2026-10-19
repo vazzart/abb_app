@@ -25,6 +25,9 @@ func Open(path string) (*DB, error) {
 		_ = conn.Close()
 		return nil, fmt.Errorf("ping: %w", err)
 	}
+	// Several goroutines (ADB poller, modem workers, dispatcher) write concurrently;
+	// a single connection serialises writes and avoids SQLITE_BUSY.
+	conn.SetMaxOpenConns(1)
 	d := &DB{conn: conn}
 	if err := d.migrate(); err != nil {
 		_ = conn.Close()
@@ -37,12 +40,14 @@ func (d *DB) Close() error {
 	return d.conn.Close()
 }
 
-// GetMaxAndroidID returns the largest android_id stored so far (0 if table is empty).
+// GetMaxAndroidID returns the largest ADB android_id stored so far (0 if none).
 // Used to initialise the Poller's lastID on restart so already-saved SMS are skipped.
+// Modem messages use non-numeric keys and are excluded.
 func (d *DB) GetMaxAndroidID(ctx context.Context) (int64, error) {
 	var v sql.NullInt64
 	err := d.conn.QueryRowContext(ctx,
-		`SELECT MAX(CAST(android_id AS INTEGER)) FROM messages`,
+		`SELECT MAX(CAST(android_id AS INTEGER)) FROM messages
+		 WHERE source IS NULL OR source = '' OR source = 'adb'`,
 	).Scan(&v)
 	if err != nil {
 		return 0, err
@@ -53,6 +58,7 @@ func (d *DB) GetMaxAndroidID(ctx context.Context) (int64, error) {
 func (d *DB) migrate() error {
 	stmts := []string{
 		`PRAGMA foreign_keys = ON`,
+		`PRAGMA busy_timeout = 5000`,
 		`CREATE TABLE IF NOT EXISTS messages (
 			id          INTEGER PRIMARY KEY,
 			android_id  TEXT    UNIQUE NOT NULL,
@@ -90,6 +96,8 @@ func (d *DB) migrate() error {
 	alterStmts := []string{
 		`ALTER TABLE messages ADD COLUMN device_name TEXT`,
 		`ALTER TABLE messages ADD COLUMN translation TEXT`,
+		`ALTER TABLE messages ADD COLUMN sim_name TEXT`,
+		`ALTER TABLE messages ADD COLUMN source TEXT`,
 	}
 	for _, s := range alterStmts {
 		if _, err := d.conn.Exec(s); err != nil && !strings.Contains(err.Error(), "duplicate column name") {

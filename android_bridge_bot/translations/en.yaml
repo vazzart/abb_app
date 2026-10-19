@@ -29,6 +29,21 @@ configuration:
   adb_watch_interval:
     name: Device Watch Interval
     description: "How often to check for USB device connection (e.g. 5s)"
+  modem_enabled:
+    name: Enable USB Modems
+    description: Read SMS from SIMCOM A7670E USB modems (any number) via AT commands
+  modem_poll_interval:
+    name: Modem Poll Interval
+    description: "Fallback SMS check interval; new SMS are normally read instantly on +CMTI (e.g. 30s)"
+  modem_watch_interval:
+    name: Modem Watch Interval
+    description: "How often to look for plugged/unplugged modems (e.g. 10s)"
+  modem_storage:
+    name: Modem SMS Storage
+    description: "SM = SIM card, ME = modem memory. SMS are deleted from storage after being saved"
+  modem_labels:
+    name: Modem Labels
+    description: "Names shown in notifications, matched by IMEI or ICCID (see addon log for values)"
   email_enabled:
     name: Enable Email
     description: Forward SMS via SMTP email

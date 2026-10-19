@@ -7,6 +7,8 @@ require (
 	github.com/go-telegram-bot-api/telegram-bot-api/v5 v5.5.1
 	github.com/prometheus/client_golang v1.23.2
 	github.com/spf13/viper v1.21.0
+	github.com/warthog618/sms v0.3.0
+	go.bug.st/serial v1.8.0
 	go.uber.org/zap v1.28.0
 	golang.org/x/net v0.54.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1

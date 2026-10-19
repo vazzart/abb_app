@@ -41,6 +41,14 @@ profile android_bridge_bot flags=(attach_disconnected,mediate_deleted,complain) 
   /dev/bus/usb/** rw,
   /dev/usb/** rw,
 
+  # USB modems (SIMCOM A7670E): AT ports and sysfs discovery
+  /dev/ttyUSB* rw,
+  /dev/ttyACM* rw,
+  /sys/class/tty/ r,
+  /sys/class/tty/** r,
+  /sys/devices/** r,
+  /sys/bus/usb/** r,
+
   # Proc / sys (read-only, deny writes)
   @{PROC}/[0-9]*/fd/ r,
   @{PROC}/[0-9]*/fdinfo/ r,

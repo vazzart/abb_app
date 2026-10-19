@@ -27,6 +27,18 @@ channels_yaml() {
     jq -r '.channels[]? | "  - " + .' "$OPTIONS" 2>/dev/null || echo "  - telegram"
 }
 
+# modem_labels: [{imei, iccid, name}] -> YAML list under modem.labels
+modem_labels_yaml() {
+    # tojson quotes values safely: a JSON string is a valid YAML scalar.
+    out=$(jq -r '.modem_labels[]? | "    - {imei: \(.imei // "" | tojson), iccid: \(.iccid // "" | tojson), name: \(.name // "" | tojson)}"' "$OPTIONS" 2>/dev/null)
+    if [ -z "$out" ]; then
+        echo "  labels: []"
+    else
+        echo "  labels:"
+        echo "$out"
+    fi
+}
+
 cat > "$OUT" <<EOF
 adb:
   server_host: "localhost"
@@ -34,6 +46,15 @@ adb:
   poll_interval: "$(opt .adb_poll_interval "30s")"
   watch_interval: "$(opt .adb_watch_interval "5s")"
   device_serial: "$(opt .adb_device_serial "")"
+
+modem:
+  enabled: $(opt_bool .modem_enabled)
+  usb_ids: ["1e0e:9011", "1e0e:9001"]
+  poll_interval: "$(opt .modem_poll_interval "30s")"
+  watch_interval: "$(opt .modem_watch_interval "10s")"
+  storage: "$(opt .modem_storage "SM")"
+  delete_after_read: true
+$(modem_labels_yaml)
 
 db:
   path: "/data/abb.db"

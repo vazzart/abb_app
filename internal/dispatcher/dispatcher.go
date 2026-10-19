@@ -2,6 +2,7 @@ package dispatcher
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"go.uber.org/zap"
@@ -26,6 +27,7 @@ type Dispatcher struct {
 	rateDelay time.Duration // minimum pause between consecutive sends
 	log       *zap.Logger
 	hooks     *DeliveryHooks
+	mu        sync.Mutex // serialises DispatchOnce so an item is never sent twice
 }
 
 func New(database *db.DB, senders map[string]sender.Sender, interval, rateDelay time.Duration, log *zap.Logger) *Dispatcher {
@@ -59,7 +61,11 @@ func (d *Dispatcher) Run(ctx context.Context) {
 
 // DispatchOnce processes all currently pending outbox items.
 // Exported so callers can trigger an immediate dispatch (e.g. right after saving a new SMS).
+// Concurrent calls wait for the running sweep, then pick up whatever is still pending.
 func (d *Dispatcher) DispatchOnce(ctx context.Context) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
 	items, err := d.db.GetPendingOutbox(ctx)
 	if err != nil {
 		d.log.Error("get pending outbox", zap.Error(err))

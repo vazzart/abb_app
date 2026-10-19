@@ -10,9 +10,9 @@ import (
 // Returns (rowID, true, nil) for new messages, (rowID, false, nil) for duplicates.
 func (d *DB) SaveMessage(ctx context.Context, msg model.Message) (id int64, isNew bool, err error) {
 	res, err := d.conn.ExecContext(ctx,
-		`INSERT OR IGNORE INTO messages (android_id, address, body, device_name, received_at)
-		 VALUES (?, ?, ?, ?, ?)`,
-		msg.AndroidID, msg.Address, msg.Body, msg.DeviceName, msg.ReceivedAt,
+		`INSERT OR IGNORE INTO messages (android_id, address, body, device_name, sim_name, source, received_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		msg.AndroidID, msg.Address, msg.Body, msg.DeviceName, msg.SimName, msg.Source, msg.ReceivedAt,
 	)
 	if err != nil {
 		return 0, false, err
@@ -46,12 +46,14 @@ func (d *DB) CountMessages(ctx context.Context) (int, error) {
 	return n, err
 }
 
-// GetMessageByID returns a message by its DB id, including device name and translation.
+// GetMessageByID returns a message by its DB id, including device/SIM name and translation.
 func (d *DB) GetMessageByID(ctx context.Context, id int64) (model.Message, error) {
 	var msg model.Message
 	err := d.conn.QueryRowContext(ctx,
-		`SELECT android_id, address, body, COALESCE(device_name, ''), COALESCE(translation, ''), received_at
+		`SELECT android_id, address, body, COALESCE(device_name, ''), COALESCE(sim_name, ''),
+		        COALESCE(source, ''), COALESCE(translation, ''), received_at
 		 FROM messages WHERE id = ?`, id,
-	).Scan(&msg.AndroidID, &msg.Address, &msg.Body, &msg.DeviceName, &msg.Translation, &msg.ReceivedAt)
+	).Scan(&msg.AndroidID, &msg.Address, &msg.Body, &msg.DeviceName, &msg.SimName,
+		&msg.Source, &msg.Translation, &msg.ReceivedAt)
 	return msg, err
 }
